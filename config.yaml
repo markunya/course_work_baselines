@@ -1,6 +1,6 @@
 exp:
     project_name: hifigan
-    exp_dir: expirement
+    exp_dir: experiment
     device: cuda
     seed: 1234
     use_wandb: true
