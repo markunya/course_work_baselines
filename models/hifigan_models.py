@@ -1,7 +1,8 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
+from torch.nn.utils import remove_weight_norm
+from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from utils.model_utils import init_weights, get_padding
 
 from utils.class_registry import ClassRegistry
@@ -130,34 +131,34 @@ class HifiGan_DiscriminatorP(torch.nn.Module):
         self.period = period
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList([
-            norm_f(nn.Conv2d(1, 32, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            norm_f(nn.Conv2d(32, 128, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            norm_f(nn.Conv2d(128, 512, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            norm_f(nn.Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            norm_f(nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))),
+            norm_f(nn.Conv2d(1, 16, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            norm_f(nn.Conv2d(16, 32, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            norm_f(nn.Conv2d(32, 64, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            # norm_f(nn.Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            # norm_f(nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))),
         ])
-        self.conv_post = norm_f(nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
+        self.conv_post = norm_f(nn.Conv2d(64, 1, (3, 1), 1, padding=(1, 0)))
 
     def forward(self, x):
-        fmap = []
+        fmaps = []
 
         # 1d to 2d
-        b, t = x.shape
+        b, c, t = x.shape
         if t % self.period != 0: # pad first
             n_pad = self.period - (t % self.period)
             x = F.pad(x, (0, n_pad), "reflect")
             t = t + n_pad
-        x = x.view(b, t // self.period, self.period)
+        x = x.view(b, c, t // self.period, self.period)
 
         for l in self.convs:
             x = l(x)
             x = F.leaky_relu(x, LRELU_SLOPE)
-            fmap.append(x)
+            fmaps.append(x)
         x = self.conv_post(x)
-        fmap.append(x)
+        fmaps.append(x)
         x = torch.flatten(x, 1, -1)
 
-        return x, fmap
+        return x, fmaps
 
 @models_registry.add_to_registry(name='hifigan_mpd')
 class HifiGan_MultiPeriodDiscriminator(torch.nn.Module):
@@ -165,9 +166,9 @@ class HifiGan_MultiPeriodDiscriminator(torch.nn.Module):
         super(HifiGan_MultiPeriodDiscriminator, self).__init__()
         self.discriminators = nn.ModuleList([
             HifiGan_DiscriminatorP(2),
-            HifiGan_DiscriminatorP(3),
+            # HifiGan_DiscriminatorP(3),
             HifiGan_DiscriminatorP(5),
-            HifiGan_DiscriminatorP(7),
+            # HifiGan_DiscriminatorP(7),
             HifiGan_DiscriminatorP(11),
         ])
 
@@ -184,7 +185,7 @@ class HifiGan_MultiPeriodDiscriminator(torch.nn.Module):
             discs_gen_out.append(disc_gen_out)
             fmaps_gen.append(fmap_gen)
 
-        return disc_real_out, disc_gen_out, fmaps_real, fmaps_gen
+        return discs_real_out, discs_gen_out, fmaps_real, fmaps_gen
 
 
 class HifiGan_DiscriminatorS(torch.nn.Module):
@@ -192,27 +193,27 @@ class HifiGan_DiscriminatorS(torch.nn.Module):
         super(HifiGan_DiscriminatorS, self).__init__()
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList([
-            norm_f(nn.Conv1d(1, 128, 15, 1, padding=7)),
-            norm_f(nn.Conv1d(128, 128, 41, 2, groups=4, padding=20)),
-            norm_f(nn.Conv1d(128, 256, 41, 2, groups=16, padding=20)),
-            norm_f(nn.Conv1d(256, 512, 41, 4, groups=16, padding=20)),
-            norm_f(nn.Conv1d(512, 1024, 41, 4, groups=16, padding=20)),
-            norm_f(nn.Conv1d(1024, 1024, 41, 1, groups=16, padding=20)),
-            norm_f(nn.Conv1d(1024, 1024, 5, 1, padding=2)),
+            norm_f(nn.Conv1d(1, 16, 15, 1, padding=7)),
+            norm_f(nn.Conv1d(16, 32, 41, 2, groups=4, padding=20)),
+            norm_f(nn.Conv1d(32, 64, 41, 2, groups=16, padding=20)),
+            # norm_f(nn.Conv1d(256, 512, 41, 4, groups=16, padding=20)),
+            # norm_f(nn.Conv1d(512, 1024, 41, 4, groups=16, padding=20)),
+            # norm_f(nn.Conv1d(1024, 1024, 41, 1, groups=16, padding=20)),
+            # norm_f(nn.Conv1d(1024, 1024, 5, 1, padding=2)),
         ])
-        self.conv_post = norm_f(nn.Conv1d(1024, 1, 3, 1, padding=1))
+        self.conv_post = norm_f(nn.Conv1d(64, 1, 3, 1, padding=1))
 
     def forward(self, x):
-        fmap = []
+        fmaps = []
         for l in self.convs:
             x = l(x)
             x = F.leaky_relu(x, LRELU_SLOPE)
-            fmap.append(x)
+            fmaps.append(x)
         x = self.conv_post(x)
-        fmap.append(x)
+        fmaps.append(x)
         x = torch.flatten(x, 1, -1)
 
-        return x, fmap
+        return x, fmaps
 
 @models_registry.add_to_registry(name='hifigan_msd')
 class HifiGan_MultiScaleDiscriminator(torch.nn.Module):

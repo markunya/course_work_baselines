@@ -16,24 +16,24 @@ datasets_registry = ClassRegistry()
 
 @datasets_registry.add_to_registry(name="meldataset")
 class MelDataset(Dataset):
-    def __init__(self, files_list, config):
+    def __init__(self, files_list, root, config):
         self.files_list = files_list
-        self.root = config.data.trainval_data_root
-        self.segment_size = config.mel.segment_size
-        self.sampling_rate = config.mel.sampling_rate
-        self.split = True
-        self.n_fft = config.mel.n_fft
-        self.num_mels = config.mel.num_mels
-        self.hop_size = config.mel.hop_size
-        self.win_size = config.mel.win_size
-        self.fmin = config.mel.fmin
-        self.fmax = config.mel.fmax
-        self.fmax_loss = config.mel.fmax_for_loss
+        self.root = root
+        self.fine_tuning = config.fine_tuning
+        self.split = config.split
+        self.segment_size = config.segment_size
+        self.sampling_rate = config.sampling_rate
+        self.n_fft = config.n_fft
+        self.num_mels = config.num_mels
+        self.hop_size = config.hop_size
+        self.win_size = config.win_size
+        self.fmin = config.fmin
+        self.fmax = config.fmax
+        self.fmax_loss = config.fmax_for_loss
+        
         self.cached_wav = None
         self.n_cache_reuse = 1
         self._cache_ref_count = 0
-        self.device = config.exp.device
-        self.fine_tuning = False
         self.base_mels_path = None
 
     def __getitem__(self, index):
@@ -44,6 +44,7 @@ class MelDataset(Dataset):
             if not self.fine_tuning:
                 audio = normalize(audio) * 0.95
             self.cached_wav = audio
+
             if sampling_rate != self.sampling_rate:
                 raise ValueError("{} SR doesn't match target {} SR".format(
                     sampling_rate, self.sampling_rate))
@@ -86,14 +87,14 @@ class MelDataset(Dataset):
                     mel = torch.nn.functional.pad(mel, (0, frames_per_seg - mel.size(2)), 'constant')
                     audio = torch.nn.functional.pad(audio, (0, self.segment_size - audio.size(1)), 'constant')
 
-        mel_loss = mel_spectrogram(audio, self.n_fft, self.num_mels,
+        mel_for_loss = mel_spectrogram(audio, self.n_fft, self.num_mels,
                                 self.sampling_rate, self.hop_size, self.win_size, self.fmin, self.fmax_loss,
                                 center=False)
 
-        return {'mel':mel.squeeze(),
+        return {'mel': mel.squeeze(),
                 'wav': audio.squeeze(0),
                 'name': filename,
-                'mel_for_loss': mel_loss.squeeze()}
+                'mel_for_loss': mel_for_loss.squeeze()}
 
     def __len__(self):
         return len(self.files_list)

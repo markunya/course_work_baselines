@@ -6,7 +6,9 @@ exp:
     use_wandb: true
 
 mel:
-    segment_size: 8192
+    fine_tuning: false
+    split: true
+    segment_size: 16384
     num_mels: 80
     num_freq: 1025
     n_fft: 1024
@@ -31,10 +33,10 @@ train:
     checkpoint_path: null
     val_metrics: []
     start_step: 1
-    steps: 300
-    log_step: 50
-    checkpoint_step: 100
-    val_step: 50
+    steps: 1000
+    log_step: 5
+    checkpoint_step: 1000000
+    val_step: 20
 
 default_model:
     optimizer:

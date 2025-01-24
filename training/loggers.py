@@ -1,6 +1,7 @@
 import wandb
 import omegaconf
 import os
+import torch
 from collections import defaultdict
 
 class WandbLogger:
@@ -30,9 +31,9 @@ class WandbLogger:
         wandb.log(values_dict, step=step)
 
     @staticmethod
-    def log_wavs(wavs_dict: dict, step: int):
+    def log_wavs(wavs_dict: dict, sample_rate: float, step: int):
         for name, wav in wavs_dict.items():
-            wandb.log({name: wandb.Audio(wav)}, step=step)
+            wandb.log({name: wandb.Audio(wav.flatten(), sample_rate)}, step=step)
 
 def log_if_enabled(func):
     def wrapper(self, *args, **kwargs):
@@ -48,7 +49,6 @@ class TrainingLogger:
         self.logger = WandbLogger(config)
         self.losses_memory = defaultdict(list)
 
-
     @log_if_enabled
     def log_train_losses(self, step: int):
         averaged_losses = {name: sum(values) / len(values) for name, values in self.losses_memory.items()}
@@ -60,8 +60,8 @@ class TrainingLogger:
         self.logger.log_values(val_metrics, step)
 
     @log_if_enabled
-    def log_dict_of_wavs(self, wavs_dict, step):
-        self.logger.log_wavs(wavs_dict, step)
+    def log_dict_of_wavs(self, wavs_dict, sample_rate, step):
+        self.logger.log_wavs(wavs_dict, sample_rate, step)
 
     @log_if_enabled
     def update_losses(self, losses_dict):

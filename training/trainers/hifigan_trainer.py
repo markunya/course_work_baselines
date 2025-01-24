@@ -32,6 +32,7 @@ class HifiGanTrainer(BaseTrainer):
         batch = next(self.train_dataloader)
         mel = batch['mel'].to(self.device)
         real_wav = batch['wav'].to(self.device)
+        real_wav = real_wav.unsqueeze(1)
         mel_for_loss = batch['mel_for_loss'].to(self.device)
 
         gen_wav = gen(mel)
@@ -55,8 +56,8 @@ class HifiGanTrainer(BaseTrainer):
                 discs_real_out=mpd_real_out,
                 discs_gen_out=mpd_gen_out
             )
-        })
-        mpd_loss.backwards()
+        }, tl_suffix='mpd')
+        mpd_loss.backward()
         mpd_optimizer.step()
 
         msd_real_out, msd_gen_out, _, _ = msd(real_wav, gen_wav.detach())
@@ -65,8 +66,8 @@ class HifiGanTrainer(BaseTrainer):
                 discs_real_out=msd_real_out,
                 discs_gen_out=msd_gen_out
             )
-        })
-        msd_loss.backwards()
+        }, tl_suffix='msd')
+        msd_loss.backward()
         msd_optimizer.step()
 
 
@@ -92,13 +93,13 @@ class HifiGanTrainer(BaseTrainer):
                 fmaps_real=msd_fmaps_real,
                 fmaps_gen=msd_fmaps_gen
             )
-        })
+        }, tl_suffix='gen')
 
         gen_loss.backward()
         gen_optimizer.step()
 
-        for scheduler in self.schedulers:
-            scheduler.step()
+        for scheduler_name in self.schedulers:
+            self.schedulers[scheduler_name].step()
 
         return {**gen_losses_dict, **mpd_losses_dict, **msd_losses_dict}
 
@@ -109,6 +110,6 @@ class HifiGanTrainer(BaseTrainer):
 
         with torch.no_grad():
             for name, mel in zip(batch['name'], batch['mel']):
-                gen_wavs_dict[name] = gen(mel)
+                gen_wavs_dict[name] = gen(mel.to(self.device)).cpu()
 
         return gen_wavs_dict

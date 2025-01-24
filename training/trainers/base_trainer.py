@@ -1,6 +1,7 @@
 import os
 import torch
 
+from tqdm import tqdm
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
 from training.loggers import TrainingLogger
@@ -49,9 +50,20 @@ class BaseTrainer:
 
     def setup_experiment_dir(self):
         self.exp_dir = self.config.exp.exp_dir
+
+        if not os.path.exists(self.exp_dir):
+            os.makedirs(self.exp_dir)
+            tqdm.write(f"Experiment directory '{self.exp_dir}' created.")
+
         self.inference_out_dir = os.path.join(self.exp_dir, 'inference_out')
         self.checkpoints_dir = os.path.join(self.exp_dir, 'checkpoints')
-        print('Директории для эксперимента успешно инициализированы')
+
+        for dir_path in [self.inference_out_dir, self.checkpoints_dir]:
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
+                tqdm.write(f"Subdirectory '{dir_path}' created.")
+
+        tqdm.write('Experiment dir successfully initialized')
 
     def _create_model(self, model_name, model_config):
         model_class = models_registry[model_name]
@@ -61,7 +73,7 @@ class BaseTrainer:
         self.models = {}
         for model_name, model_config in self.config.models.items():
             self.models[model_name] = self._create_model(model_name, model_config)
-        print(f'Модели успешно инициализированы')
+        tqdm.write(f'Models successfully initialized: {list(self.models.keys())}')
 
     def _create_optimizer(self, model_name, model_config):
         optimizer_name = model_config['optimizer']['name']
@@ -79,39 +91,41 @@ class BaseTrainer:
         for model_name, model_config in self.config.models.items():
             self.optimizers[model_name] = self._create_optimizer(model_name, model_config)
             self.schedulers[model_name] = self._create_scheduler(model_name, model_config)
-        print(f'Оптимизаторы и шедулеры успешно настроены: {list(self.optimizers.keys())}')
+        tqdm.write(f'Optimizers and schedulers successfully initialized')
 
     def setup_losses(self):
         self.loss_builders = {}
         for model_name, model_config in self.config.models.items():
             self.loss_builders[model_name] = LossBuilder(model_config)
-        print(f'Функции потерь успешно настроены для каждой модели')
+        tqdm.write(f'Loss functions successfully initialized')
 
     def setup_metrics(self):
         self.metrics = []
         for metric_name in self.config.train.val_metrics:
             metric = metrics_registry[metric_name]()
             self.metrics.append((metric_name, metric))
-        print('Метрики успешно инициализированы')
+        tqdm.write('Metrics successfully initialized')
 
     def setup_logger(self):
         self.logger = TrainingLogger(self.config)
         if self.config.exp.use_wandb:
-            print('Логгер успешно инициализирован')
+            tqdm.write('Logger successfully initialized')
 
     def setup_datasets(self):
         train_files_list = read_file_list(self.config.data.train_data_file_path)
         self.train_dataset = datasets_registry[self.config.data.dataset](
                 files_list=train_files_list,
-                config=self.config
+                root=self.config.data.trainval_data_root,
+                config=self.config.mel
             )
 
         val_files_list = read_file_list(self.config.data.val_data_file_path)
         self.val_dataset = datasets_registry[self.config.data.dataset](
                 files_list=val_files_list,
-                config=self.config
+                root=self.config.data.trainval_data_root,
+                config=self.config.mel
         )
-        print('Датасеты для обучения и валидации успешно инициализированы')
+        tqdm.write('Datasets for train and validation successfully initialized')
 
     
     def setup_train_dataloader(self):
@@ -135,7 +149,7 @@ class BaseTrainer:
     def setup_dataloaders(self):
         self.setup_train_dataloader()
         self.setup_val_dataloader()
-        print('Загрузчики данных успешно инициализированны')
+        tqdm.write('Dataloaders successfully initialized')
 
     def to_train(self):
         for model in self.models.values():
@@ -148,18 +162,25 @@ class BaseTrainer:
     def training_loop(self):
         self.to_train()
 
-        for self.step in range(self.start_step, self.config.train.steps + 1):
-            losses_dict = self.train_step()
-            self.logger.update_losses(losses_dict)
+        with tqdm(total=self.config.train.steps, desc="Training Progress", unit="step") as progress:
+            for self.step in range(self.start_step, self.config.train.steps + 1):
+                losses_dict = self.train_step()
+                self.logger.update_losses(losses_dict)
 
-            if self.step % self.config.train.val_step == 0:
-                self.validate()
+                progress.update(1)
+                progress.set_postfix({
+                    "step": self.step
+                })
 
-            if self.step % self.config.train.log_step == 0:
-                self.logger.log_train_losses(self.step)
+                if self.step % self.config.train.val_step == 0:
+                    self.validate()
 
-            if self.step % self.config.train.checkpoint_step == 0:
-                self.save_checkpoint()
+                if self.step % self.config.train.log_step == 0:
+                    self.logger.log_train_losses(self.step)
+
+                if self.step % self.config.train.checkpoint_step == 0:
+                    self.save_checkpoint()
+
     
     def save_checkpoint(self):
         for model_name in self.models.keys():
@@ -170,9 +191,9 @@ class BaseTrainer:
                 }
                 path = os.path.join(self.checkpoints_dir, f'{model_name}_checkpoint_{self.step}.pth')
                 torch.save(checkpoint, path)
-                print(f'Чекпоинт для модели {model_name} на шаге {self.step} сохранён по пути {path}')
+                tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:
-                print(f'Не удалось сохранить чекпоинт для модели {model_name} на шаге {self.step}: {e}')
+                tqdm.write(f'An error occured when saving checkpoint for {model_name} on step {self.step}: {e}')
 
     @torch.no_grad()
     def validate(self):
@@ -186,9 +207,11 @@ class BaseTrainer:
             val_iter = iter(self.val_dataloader)
             metrics_dict[metric_name] = metric(val_iter, self.synthesize_wavs)
 
-        self.logger.log_dict_of_wavs(synthesized_wavs, step=self.step)
-        self.logger.log_val_metrics(metrics_dict)
-        print(f"Validation completed. Metrics: {metrics_dict}")
+        self.logger.log_dict_of_wavs(synthesized_wavs,
+                                    self.config.mel.sampling_rate, step=self.step)
+        self.logger.log_val_metrics(metrics_dict, self.step)
+        tqdm.write("Validation completed." + 
+                ("Metrics: {metrics_dict}" if len(metrics_dict) > 0 else ""))
     
     @torch.no_grad()
     def inference(self):
