@@ -1,8 +1,4 @@
-import os
 import torch
-from PIL import Image
-
-from torch.nn import functional as F
 from utils.class_registry import ClassRegistry
 from utils.data_utils import mel_spectrogram
 from utils.model_utils import requires_grad
@@ -106,10 +102,18 @@ class HifiGanTrainer(BaseTrainer):
     def synthesize_wavs(self, batch):
         gen = self.models[self.gen_name]
         gen.eval()
-        gen_wavs_dict = {}
+        
+        result_dict = {
+            'gen_wav': [],
+            'filename': []
+        }
 
         with torch.no_grad():
             for name, mel in zip(batch['name'], batch['mel']):
-                gen_wavs_dict[name] = gen(mel.to(self.device)).cpu()
-
-        return gen_wavs_dict
+                gen_wav = gen(mel.to(self.device)).squeeze(0)
+                
+                result_dict['gen_wav'].append(gen_wav)
+                result_dict['filename'].append(name)
+        
+        result_dict['gen_wav'] = torch.stack(result_dict['gen_wav'])
+        return result_dict

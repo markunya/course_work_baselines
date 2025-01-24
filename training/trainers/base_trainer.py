@@ -102,7 +102,7 @@ class BaseTrainer:
     def setup_metrics(self):
         self.metrics = []
         for metric_name in self.config.train.val_metrics:
-            metric = metrics_registry[metric_name]()
+            metric = metrics_registry[metric_name](self.config)
             self.metrics.append((metric_name, metric))
         tqdm.write('Metrics successfully initialized')
 
@@ -199,17 +199,16 @@ class BaseTrainer:
     def validate(self):
         self.to_eval()
         metrics_dict = {}
+        for batch in self.val_dataloader:
+            for metric_name, metric in self.metrics:
+                metrics_dict['val_' + metric_name] = metric(batch, self.synthesize_wavs(batch))
+
+        self.logger.log_val_metrics(metrics_dict, self.step)
 
         batch = next(iter(self.val_dataloader))
-        synthesized_wavs = self.synthesize_wavs(batch)
+        gen_batch = self.synthesize_wavs(batch)
+        self.logger.log_synthesized_batch(gen_batch, self.config.mel.sampling_rate, step=self.step)
 
-        for metric_name, metric in self.metrics:
-            val_iter = iter(self.val_dataloader)
-            metrics_dict[metric_name] = metric(val_iter, self.synthesize_wavs)
-
-        self.logger.log_dict_of_wavs(synthesized_wavs,
-                                    self.config.mel.sampling_rate, step=self.step)
-        self.logger.log_val_metrics(metrics_dict, self.step)
         tqdm.write("Validation completed." + 
                 ("Metrics: {metrics_dict}" if len(metrics_dict) > 0 else ""))
     
@@ -218,7 +217,7 @@ class BaseTrainer:
         raise NotImplementedError('Will be implemented later')
     
     @abstractmethod
-    def synthesize_wavs(self):
+    def synthesize_wavs(self, batch):
         pass
 
     @abstractmethod

@@ -131,13 +131,13 @@ class HifiGan_DiscriminatorP(torch.nn.Module):
         self.period = period
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList([
-            norm_f(nn.Conv2d(1, 16, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            norm_f(nn.Conv2d(16, 32, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            norm_f(nn.Conv2d(32, 64, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            # norm_f(nn.Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
-            # norm_f(nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))),
+            norm_f(nn.Conv2d(1, 32, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            norm_f(nn.Conv2d(32, 128, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            norm_f(nn.Conv2d(128, 512, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            norm_f(nn.Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(get_padding(5, 1), 0))),
+            norm_f(nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))),
         ])
-        self.conv_post = norm_f(nn.Conv2d(64, 1, (3, 1), 1, padding=(1, 0)))
+        self.conv_post = norm_f(nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
 
     def forward(self, x):
         fmaps = []
@@ -166,9 +166,9 @@ class HifiGan_MultiPeriodDiscriminator(torch.nn.Module):
         super(HifiGan_MultiPeriodDiscriminator, self).__init__()
         self.discriminators = nn.ModuleList([
             HifiGan_DiscriminatorP(2),
-            # HifiGan_DiscriminatorP(3),
+            HifiGan_DiscriminatorP(3),
             HifiGan_DiscriminatorP(5),
-            # HifiGan_DiscriminatorP(7),
+            HifiGan_DiscriminatorP(7),
             HifiGan_DiscriminatorP(11),
         ])
 
@@ -193,15 +193,15 @@ class HifiGan_DiscriminatorS(torch.nn.Module):
         super(HifiGan_DiscriminatorS, self).__init__()
         norm_f = weight_norm if use_spectral_norm == False else spectral_norm
         self.convs = nn.ModuleList([
-            norm_f(nn.Conv1d(1, 16, 15, 1, padding=7)),
-            norm_f(nn.Conv1d(16, 32, 41, 2, groups=4, padding=20)),
-            norm_f(nn.Conv1d(32, 64, 41, 2, groups=16, padding=20)),
-            # norm_f(nn.Conv1d(256, 512, 41, 4, groups=16, padding=20)),
-            # norm_f(nn.Conv1d(512, 1024, 41, 4, groups=16, padding=20)),
-            # norm_f(nn.Conv1d(1024, 1024, 41, 1, groups=16, padding=20)),
-            # norm_f(nn.Conv1d(1024, 1024, 5, 1, padding=2)),
+            norm_f(nn.Conv1d(1, 128, 15, 1, padding=7)),
+            norm_f(nn.Conv1d(128, 128, 41, 2, groups=4, padding=20)),
+            norm_f(nn.Conv1d(128, 256, 41, 2, groups=16, padding=20)),
+            norm_f(nn.Conv1d(256, 512, 41, 4, groups=16, padding=20)),
+            norm_f(nn.Conv1d(512, 1024, 41, 4, groups=16, padding=20)),
+            norm_f(nn.Conv1d(1024, 1024, 41, 1, groups=16, padding=20)),
+            norm_f(nn.Conv1d(1024, 1024, 5, 1, padding=2)),
         ])
-        self.conv_post = norm_f(nn.Conv1d(64, 1, 3, 1, padding=1))
+        self.conv_post = norm_f(nn.Conv1d(1024, 1, 3, 1, padding=1))
 
     def forward(self, x):
         fmaps = []

@@ -147,8 +147,11 @@ cache
 **/*.dat
 **/*.bz2
 
-#logs
+#runs
 *.out
+*.sbatch
+
+expirement
 
 #datasets
 VCTK/

@@ -1,7 +1,6 @@
 import wandb
 import omegaconf
 import os
-import torch
 from collections import defaultdict
 
 class WandbLogger:
@@ -46,6 +45,7 @@ class TrainingLogger:
         self.use_logger = config.exp.use_wandb
         if not self.use_logger:
             return
+        self.log_batch_size = config.exp.log_batch_size
         self.logger = WandbLogger(config)
         self.losses_memory = defaultdict(list)
 
@@ -60,7 +60,11 @@ class TrainingLogger:
         self.logger.log_values(val_metrics, step)
 
     @log_if_enabled
-    def log_dict_of_wavs(self, wavs_dict, sample_rate, step):
+    def log_synthesized_batch(self, gen_batch, sample_rate, step):
+        wavs_dict = {}
+        for name, gen_wav in zip(gen_batch['filename'][:self.log_batch_size], 
+                                gen_batch['gen_wav'][:self.log_batch_size]):
+            wavs_dict[name] = gen_wav.cpu()
         self.logger.log_wavs(wavs_dict, sample_rate, step)
 
     @log_if_enabled
