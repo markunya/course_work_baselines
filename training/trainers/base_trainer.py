@@ -1,13 +1,14 @@
 import os
 import torch
 
-from training.schedulers import ReduceLrOnEach
-from tqdm import tqdm
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
 from training.loggers import TrainingLogger
-from training.losses.losses import LossBuilder
+from training.losses.hifigan_losses import LossBuilder
 from torch.utils.data import DataLoader
+from training.schedulers import ReduceLrOnEach
+from tqdm import tqdm
+from utils.class_registry import ClassRegistry
 
 from models.hifigan_models import models_registry
 from training.optimizers import optimizers_registry
@@ -16,6 +17,8 @@ from datasets.datasets import datasets_registry
 from metrics.metrics import metrics_registry
 
 from utils.data_utils import read_file_list
+
+gan_trainers_registry = ClassRegistry()
 
 class BaseTrainer:
     def __init__(self, config):

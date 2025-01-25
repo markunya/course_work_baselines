@@ -1,10 +1,9 @@
 import torch
-from utils.class_registry import ClassRegistry
 from utils.data_utils import mel_spectrogram
 from utils.model_utils import requires_grad
 from training.trainers.base_trainer import BaseTrainer
 
-gan_trainers_registry = ClassRegistry()
+from training.trainers.base_trainer import gan_trainers_registry
 
 @gan_trainers_registry.add_to_registry(name='hifigan_trainer')
 class HifiGanTrainer(BaseTrainer):

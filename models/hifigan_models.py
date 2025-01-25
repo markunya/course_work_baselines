@@ -4,10 +4,7 @@ import torch.nn as nn
 from torch.nn.utils import remove_weight_norm
 from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from utils.model_utils import init_weights, get_padding
-
-from utils.class_registry import ClassRegistry
-
-models_registry = ClassRegistry()
+from models.models import models_registry
 
 LRELU_SLOPE = 0.1
 
