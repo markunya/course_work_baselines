@@ -9,7 +9,7 @@ from training.trainers.base_trainer import gan_trainers_registry
 class HifiGanTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
-        self.gen_name = 'hifigan_generator'    
+        self.gen_name = 'hifigan_gen'    
         self.mpd_name = 'hifigan_mpd'
         self.msd_name = 'hifigan_msd'
 

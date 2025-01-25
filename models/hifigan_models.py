@@ -4,72 +4,9 @@ import torch.nn as nn
 from torch.nn.utils import remove_weight_norm
 from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from utils.model_utils import init_weights, get_padding
-from models.models import models_registry
+from models.models import LRELU_SLOPE, models_registry, ResBlock1, ResBlock2
 
-LRELU_SLOPE = 0.1
-
-class HifiGan_ResBlock1(torch.nn.Module):
-    def __init__(self, channels, kernel_size=3, dilation=(1, 3, 5)):
-        super(HifiGan_ResBlock1, self).__init__()
-        self.convs1 = nn.ModuleList([
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[0],
-                            padding=get_padding(kernel_size, dilation[0]))),
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[1],
-                            padding=get_padding(kernel_size, dilation[1]))),
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[2],
-                            padding=get_padding(kernel_size, dilation[2])))
-        ])
-        self.convs1.apply(init_weights)
-
-        self.convs2 = nn.ModuleList([
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=1,
-                            padding=get_padding(kernel_size, 1))),
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=1,
-                            padding=get_padding(kernel_size, 1))),
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=1,
-                            padding=get_padding(kernel_size, 1)))
-        ])
-        self.convs2.apply(init_weights)
-
-    def forward(self, x):
-        for c1, c2 in zip(self.convs1, self.convs2):
-            xt = F.leaky_relu(x, LRELU_SLOPE)
-            xt = c1(xt)
-            xt = F.leaky_relu(xt, LRELU_SLOPE)
-            xt = c2(xt)
-            x = xt + x
-        return x
-
-    def remove_weight_norm(self):
-        for l in self.convs1:
-            remove_weight_norm(l)
-        for l in self.convs2:
-            remove_weight_norm(l)
-
-
-class HifiGan_ResBlock2(torch.nn.Module):
-    def __init__(self, channels, kernel_size=3, dilation=(1, 3)):
-        super(HifiGan_ResBlock2, self).__init__()
-        self.convs = nn.ModuleList([
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[0],
-                            padding=get_padding(kernel_size, dilation[0]))),
-            weight_norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[1],
-                            padding=get_padding(kernel_size, dilation[1])))
-        ])
-        self.convs.apply(init_weights)
-
-    def forward(self, x):
-        for c in self.convs:
-            xt = F.leaky_relu(x, LRELU_SLOPE)
-            xt = c(xt)
-            x = xt + x
-        return x
-
-    def remove_weight_norm(self):
-        for l in self.convs:
-            remove_weight_norm(l)
-
-@models_registry.add_to_registry(name='hifigan_generator')
+@models_registry.add_to_registry(name='hifigan_gen')
 class HifiGan_Generator(torch.nn.Module):
     def __init__(self, resblock, resblock_kernel_sizes, upsample_rates,
                 upsample_initial_channel, upsample_kernel_sizes, resblock_dilation_sizes):
@@ -77,7 +14,7 @@ class HifiGan_Generator(torch.nn.Module):
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.conv_pre = weight_norm(nn.Conv1d(80, upsample_initial_channel, 7, 1, padding=3))
-        resblock = HifiGan_ResBlock1 if resblock == '1' else HifiGan_ResBlock2
+        resblock = ResBlock1 if resblock == '1' else ResBlock2
 
         self.ups = nn.ModuleList()
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
@@ -214,7 +151,7 @@ class HifiGan_DiscriminatorS(torch.nn.Module):
 
 @models_registry.add_to_registry(name='hifigan_msd')
 class HifiGan_MultiScaleDiscriminator(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, same_scale=False):
         super(HifiGan_MultiScaleDiscriminator, self).__init__()
         self.discriminators = nn.ModuleList([
             HifiGan_DiscriminatorS(use_spectral_norm=True),
@@ -224,7 +161,7 @@ class HifiGan_MultiScaleDiscriminator(torch.nn.Module):
         self.meanpools = nn.ModuleList([
             nn.AvgPool1d(4, 2, padding=2),
             nn.AvgPool1d(4, 2, padding=2)
-        ])
+        ]) if not same_scale else None
 
     def forward(self, real_wav, gen_wav):
         discs_real_out = []
@@ -232,7 +169,7 @@ class HifiGan_MultiScaleDiscriminator(torch.nn.Module):
         fmaps_real = []
         fmaps_gen = []
         for i, d in enumerate(self.discriminators):
-            if i != 0:
+            if i != 0 and self.meanpools is not None:
                 real_wav = self.meanpools[i-1](real_wav)
                 gen_wav = self.meanpools[i-1](gen_wav)
             disc_real_out, fmap_real = d(real_wav)
