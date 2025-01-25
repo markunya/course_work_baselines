@@ -21,10 +21,11 @@ class L1MelDiff(BaseMetric):
         self.win_size = config.mel.win_size
         self.fmin = config.mel.fmin
         self.fmax = config.mel.fmax_for_loss
+        self.device = config.exp.device
         self.l1_loss = nn.L1Loss()
 
     def __call__(self, real_batch, gen_batch):
-        real_mel = real_batch['mel_for_loss']
+        real_mel = real_batch['mel_for_loss'].to(self.device)
         gen_mel = mel_spectrogram(gen_batch['gen_wav'], self.n_fft, self.num_mels,
                                       self.sampling_rate, self.hop_size, self.win_size,
                                       self.fmin, self.fmax, center=False)

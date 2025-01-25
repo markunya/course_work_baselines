@@ -1,6 +1,7 @@
 import os
 import torch
 
+from training.schedulers import ReduceLrOnEach
 from tqdm import tqdm
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
@@ -116,14 +117,15 @@ class BaseTrainer:
         self.train_dataset = datasets_registry[self.config.data.dataset](
                 files_list=train_files_list,
                 root=self.config.data.trainval_data_root,
-                config=self.config.mel
+                **self.config.mel
             )
 
         val_files_list = read_file_list(self.config.data.val_data_file_path)
         self.val_dataset = datasets_registry[self.config.data.dataset](
                 files_list=val_files_list,
                 root=self.config.data.trainval_data_root,
-                config=self.config.mel
+                split=False,
+                **self.config.mel
         )
         tqdm.write('Datasets for train and validation successfully initialized')
 
@@ -140,7 +142,7 @@ class BaseTrainer:
     def setup_val_dataloader(self):
         self.val_dataloader = DataLoader(
             self.val_dataset,
-            batch_size=self.config.data.val_batch_size,
+            batch_size=1,
             shuffle=False,
             num_workers=self.config.data.workers,
             pin_memory=True,
@@ -165,12 +167,22 @@ class BaseTrainer:
         with tqdm(total=self.config.train.steps, desc="Training Progress", unit="step") as progress:
             for self.step in range(self.start_step, self.config.train.steps + 1):
                 losses_dict = self.train_step()
-                self.logger.update_losses(losses_dict)
+                
+                for scheduler_name in self.schedulers:
+                    if self.schedulers[scheduler_name].reduce_time == ReduceLrOnEach.step:
+                        self.schedulers[scheduler_name].step()
 
-                progress.update(1)
+                if self.step % len(self.train_dataloader) == 0:
+                    for scheduler_name in self.schedulers:
+                        if self.schedulers[scheduler_name].reduce_time == ReduceLrOnEach.epoch:
+                            self.schedulers[scheduler_name].step()
+
+                self.logger.update_losses(losses_dict)
                 progress.set_postfix({
-                    "step": self.step
+                    model_name + '_lr': optimizer.param_groups[0]['lr']
+                    for model_name, optimizer in self.optimizers.items()
                 })
+                progress.update(1)
 
                 if self.step % self.config.train.val_step == 0:
                     self.validate()
@@ -205,9 +217,11 @@ class BaseTrainer:
 
         self.logger.log_val_metrics(metrics_dict, self.step)
 
-        batch = next(iter(self.val_dataloader))
-        gen_batch = self.synthesize_wavs(batch)
-        self.logger.log_synthesized_batch(gen_batch, self.config.mel.sampling_rate, step=self.step)
+        iterator = iter(self.val_dataloader)
+        for _ in range(self.config.exp.log_batch_size):
+            batch = next(iterator)
+            gen_batch = self.synthesize_wavs(batch)
+            self.logger.log_synthesized_batch(gen_batch, self.config.mel.sampling_rate, step=self.step)
 
         tqdm.write("Validation completed." + 
                 ("Metrics: {metrics_dict}" if len(metrics_dict) > 0 else ""))

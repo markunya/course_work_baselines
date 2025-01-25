@@ -94,9 +94,6 @@ class HifiGanTrainer(BaseTrainer):
         gen_loss.backward()
         gen_optimizer.step()
 
-        for scheduler_name in self.schedulers:
-            self.schedulers[scheduler_name].step()
-
         return {**gen_losses_dict, **mpd_losses_dict, **msd_losses_dict}
 
     def synthesize_wavs(self, batch):

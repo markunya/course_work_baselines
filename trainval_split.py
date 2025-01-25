@@ -18,8 +18,9 @@ if __name__ == "__main__":
     all_files = []
     for root, dirs, files in os.walk(args.dataset_dir):
         for file in files:
-            rel_path = os.path.relpath(os.path.join(root, file), args.dataset_dir)
-            all_files.append(rel_path)
+            if file.endswith('.wav'):
+                rel_path = os.path.relpath(os.path.join(root, file), args.dataset_dir)
+                all_files.append(rel_path)
     
     train_files, val_files = train_test_split(all_files, test_size=args.val_size, random_state=42)
     

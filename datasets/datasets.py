@@ -16,42 +16,51 @@ datasets_registry = ClassRegistry()
 
 @datasets_registry.add_to_registry(name="meldataset")
 class MelDataset(Dataset):
-    def __init__(self, files_list, root, config):
+    def __init__(self, files_list, root, segment_size,
+                sampling_rate, n_fft, num_mels, hop_size, win_size,
+                fmin, fmax, fmax_for_loss, fine_tuning=False, split=True):
         self.files_list = files_list
         self.root = root
-        self.fine_tuning = config.fine_tuning
-        self.split = config.split
-        self.segment_size = config.segment_size
-        self.sampling_rate = config.sampling_rate
-        self.n_fft = config.n_fft
-        self.num_mels = config.num_mels
-        self.hop_size = config.hop_size
-        self.win_size = config.win_size
-        self.fmin = config.fmin
-        self.fmax = config.fmax
-        self.fmax_loss = config.fmax_for_loss
+        self.fine_tuning = fine_tuning
+        self.split = split
+        self.segment_size = segment_size
+        self.sampling_rate = sampling_rate
+        self.n_fft = n_fft
+        self.num_mels = num_mels
+        self.hop_size = hop_size
+        self.win_size = win_size
+        self.fmin = fmin
+        self.fmax = fmax
+        self.fmax_loss = fmax_for_loss
         
         self.cached_wav = None
         self.n_cache_reuse = 1
         self._cache_ref_count = 0
         self.base_mels_path = None
 
-    def __getitem__(self, index):
+    def __getitem__(self, index, attempts=5):
+        if attempts == 0:
+            raise ValueError("Unable to load a valid file after several attempts.")
         filename = self.files_list[index]
-        if self._cache_ref_count == 0:
-            audio, sampling_rate = load_wav(os.path.join(self.root, filename))
-            audio = audio / MAX_WAV_VALUE
-            if not self.fine_tuning:
-                audio = normalize(audio) * 0.95
-            self.cached_wav = audio
+        try:
+            if self._cache_ref_count == 0:
+                audio, sampling_rate = load_wav(os.path.join(self.root, filename))
+                audio = audio / MAX_WAV_VALUE
+                if not self.fine_tuning:
+                    audio = normalize(audio) * 0.95
+                self.cached_wav = audio
 
-            if sampling_rate != self.sampling_rate:
-                raise ValueError("{} SR doesn't match target {} SR".format(
-                    sampling_rate, self.sampling_rate))
-            self._cache_ref_count = self.n_cache_reuse
-        else:
-            audio = self.cached_wav
-            self._cache_ref_count -= 1
+                if sampling_rate != self.sampling_rate:
+                    raise ValueError("{} SR doesn't match target {} SR".format(
+                        sampling_rate, self.sampling_rate))
+                self._cache_ref_count = self.n_cache_reuse
+            else:
+                audio = self.cached_wav
+                self._cache_ref_count -= 1
+        except Exception as e:
+            print(f"Warning: Failed to load {filename}, error: {e}. Picking a random file instead.")
+            random_index = random.randint(0, len(self.files_list) - 1)
+            return self.__getitem__(random_index, attempts=attempts-1)
 
         audio = torch.FloatTensor(audio)
         audio = audio.unsqueeze(0)
