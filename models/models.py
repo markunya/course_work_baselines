@@ -21,7 +21,7 @@ class ResBlock1(nn.Module):
                             padding=get_padding(kernel_size, dilation[0]))),
             self.norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[1],
                             padding=get_padding(kernel_size, dilation[1]))),
-            self.nor,(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[2],
+            self.norm(nn.Conv1d(channels, channels, kernel_size, 1, dilation=dilation[2],
                             padding=get_padding(kernel_size, dilation[2])))
         ])
         self.convs1.apply(init_weights)

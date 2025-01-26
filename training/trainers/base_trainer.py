@@ -4,7 +4,7 @@ import torch
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
 from training.loggers import TrainingLogger
-from training.losses.hifigan_losses import LossBuilder
+from training.losses.losses import LossBuilder
 from torch.utils.data import DataLoader
 from training.schedulers import ReduceLrOnEach
 from tqdm import tqdm
@@ -71,7 +71,20 @@ class BaseTrainer:
 
     def _create_model(self, model_name, model_config):
         model_class = models_registry[model_name]
-        return model_class(**model_config['args']).to(self.device)
+        model = model_class(**model_config['args']).to(self.device)
+
+        checkpoint_path = model_config.get('checkpoint_path')
+        if checkpoint_path is not None and os.path.isfile(checkpoint_path):
+            print(f"Loading checkpoint for {model_name} from {checkpoint_path}...")
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            model.load_state_dict(checkpoint['state_dict'])
+        else:
+            if checkpoint_path:
+                print(f"Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.")
+            else:
+                print(f"No checkpoint specified for {model_name}. Initializing from scratch.")
+
+        return model
     
     def setup_models(self):
         self.models = {}
@@ -82,7 +95,18 @@ class BaseTrainer:
     def _create_optimizer(self, model_name, model_config):
         optimizer_name = model_config['optimizer']['name']
         optimizer_class = optimizers_registry[optimizer_name]
-        return optimizer_class(self.models[model_name].parameters(), **model_config['optimizer']['args'])
+        optimizer = optimizer_class(self.models[model_name].parameters(), **model_config['optimizer']['args'])
+
+        checkpoint_path = model_config.get('checkpoint_path')
+        if checkpoint_path is not None and os.path.isfile(checkpoint_path):
+            print(f"Loading optimizer state for {model_name} from {checkpoint_path}...")
+            checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            if 'optimizer_state_dict' in checkpoint:
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            else:
+                print(f"Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.")
+
+        return optimizer
     
     def _create_scheduler(self, model_name, model_config):
         scheduler_name = model_config['scheduler']['name']
@@ -204,7 +228,8 @@ class BaseTrainer:
                     'state_dict': self.models[model_name].state_dict(),
                     'optimizer_state_dict': self.optimizers[model_name].state_dict()
                 }
-                path = os.path.join(self.checkpoints_dir, f'{model_name}_checkpoint_{self.step}.pth')
+                path = os.path.join(self.checkpoints_dir,
+                                f'{model_name}_checkpoint_{self.step}_{self.config.exp.run_name}.pth')
                 torch.save(checkpoint, path)
                 tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:

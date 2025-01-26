@@ -152,6 +152,7 @@ cache
 *.sbatch
 
 expirement
+kaggle.json
 
 #datasets
 VCTK/

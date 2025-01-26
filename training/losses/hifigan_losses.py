@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from losses.losses import losses_registry
+from .losses import losses_registry
 
 @losses_registry.add_to_registry(name='feature_loss')
 class FeatureLoss(nn.Module):
@@ -30,3 +30,9 @@ class GeneratorLoss(nn.Module):
             one_disc_loss = torch.mean((1 - disc_gen_out)**2)
             loss += one_disc_loss
         return loss
+
+@losses_registry.add_to_registry(name='l1_mel_loss')
+class L1Loss(nn.L1Loss):
+    def forward(self, gen_mel, real_mel):
+        return super().forward(gen_mel, real_mel)
+    

@@ -6,19 +6,12 @@ from collections import defaultdict
 class WandbLogger:
     def __init__(self, config):
         wandb.login(key=os.environ['WANDB_KEY'].strip())
-        if config.train.checkpoint_path != "":
-            self.wandb_args = {
-                "id": wandb.util.generate_id(),
-                "project": config.exp.project_name,
-                "name": config.exp.run_name,
-            }
-        else:
-            self.wandb_args = {
-                "id": wandb.util.generate_id(),
-                "project": config.exp.project_name,
-                "name": config.exp.run_name,
-                "config": config,
-            }
+        self.wandb_args = {
+            "id": wandb.util.generate_id(),
+            "project": config.exp.project_name,
+            "name": config.exp.run_name,
+            "config": config,
+        }
 
         wandb.init(**self.wandb_args, resume="allow")
         config_dict = omegaconf.OmegaConf.to_container(config, resolve=True)

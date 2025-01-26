@@ -27,10 +27,9 @@ data:
 
 train:
     trainer: hifigan_trainer
-    checkpoint_path: null
     val_metrics: ["l1_mel_diff"]
-    start_step: 1
-    steps: 30000
+    start_step: 10001
+    steps: 50000
     log_step: 250
     checkpoint_step: 10000
     val_step: 500
@@ -51,6 +50,7 @@ default_model:
 models:
     hifigan_gen:
         inherit: default_model
+        checkpoint_path: "experiment/checkpoints/hifigan_generator_checkpoint_10000_first.pth"
         args:
             resblock: "1"
             upsample_rates: [8,8,2,2]
@@ -65,12 +65,14 @@ models:
             
     hifigan_mpd:
         inherit: default_model
+        checkpoint_path: "experiment/checkpoints/hifigan_mpd_checkpoint_10000_first.pth"
         args: {}
         losses:
             hifigan_disc_loss: 1        
     
     hifigan_msd:
         inherit: default_model
+        checkpoint_path: "experiment/checkpoints/hifigan_msd_checkpoint_10000_first.pth"
         args: {}
         losses:
             hifigan_disc_loss: 1 
