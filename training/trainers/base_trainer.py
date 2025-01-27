@@ -57,7 +57,7 @@ class BaseTrainer:
 
         if not os.path.exists(self.exp_dir):
             os.makedirs(self.exp_dir)
-            tqdm.write(f"Experiment directory '{self.exp_dir}' created.")
+            tqdm.write(f'Experiment directory \'{self.exp_dir}\' created.')
 
         self.inference_out_dir = os.path.join(self.exp_dir, 'inference_out')
         self.checkpoints_dir = os.path.join(self.exp_dir, 'checkpoints')
@@ -65,7 +65,7 @@ class BaseTrainer:
         for dir_path in [self.inference_out_dir, self.checkpoints_dir]:
             if not os.path.exists(dir_path):
                 os.makedirs(dir_path)
-                tqdm.write(f"Subdirectory '{dir_path}' created.")
+                tqdm.write(f'Subdirectory \'{dir_path}\' created.')
 
         tqdm.write('Experiment dir successfully initialized')
 
@@ -75,14 +75,14 @@ class BaseTrainer:
 
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
-            print(f"Loading checkpoint for {model_name} from {checkpoint_path}...")
+            print(f'Loading checkpoint for {model_name} from {checkpoint_path}...')
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             model.load_state_dict(checkpoint['state_dict'])
         else:
             if checkpoint_path:
-                print(f"Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.")
+                print(f'Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.')
             else:
-                print(f"No checkpoint specified for {model_name}. Initializing from scratch.")
+                print(f'No checkpoint specified for {model_name}. Initializing from scratch.')
 
         return model
     
@@ -99,12 +99,12 @@ class BaseTrainer:
 
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
-            print(f"Loading optimizer state for {model_name} from {checkpoint_path}...")
+            print(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             if 'optimizer_state_dict' in checkpoint:
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             else:
-                print(f"Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.")
+                print(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
 
         return optimizer
     
@@ -140,19 +140,19 @@ class BaseTrainer:
             tqdm.write('Logger successfully initialized')
 
     def setup_datasets(self):
-        train_files_list = read_file_list(self.config.data.train_data_file_path)
         self.train_dataset = datasets_registry[self.config.data.dataset](
-                files_list=train_files_list,
-                root=self.config.data.trainval_data_root,
-                **self.config.mel
+                self.config.data.root,
+                self.config.data.train_data_file_path,
+                **self.config.mel,
+                **self.config.data.dataset_args
             )
 
-        val_files_list = read_file_list(self.config.data.val_data_file_path)
         self.val_dataset = datasets_registry[self.config.data.dataset](
-                files_list=val_files_list,
-                root=self.config.data.trainval_data_root,
+                self.config.data.root,
+                self.config.data.val_data_file_path,
                 split=False,
-                **self.config.mel
+                **self.config.mel,
+                **self.config.data.dataset_args
         )
         tqdm.write('Datasets for train and validation successfully initialized')
 
@@ -191,7 +191,7 @@ class BaseTrainer:
     def training_loop(self):
         self.to_train()
 
-        with tqdm(total=self.config.train.steps, desc="Training Progress", unit="step") as progress:
+        with tqdm(total=self.config.train.steps, desc='Training Progress', unit='step') as progress:
             for self.step in range(self.start_step, self.config.train.steps + 1):
                 losses_dict = self.train_step()
                 
@@ -251,8 +251,8 @@ class BaseTrainer:
             gen_batch = self.synthesize_wavs(batch)
             self.logger.log_synthesized_batch(gen_batch, self.config.mel.sampling_rate, step=self.step)
 
-        tqdm.write("Validation completed." + 
-                ("Metrics: {metrics_dict}" if len(metrics_dict) > 0 else ""))
+        tqdm.write('Validation completed.' + 
+                (f'Metrics: {metrics_dict}' if len(metrics_dict) > 0 else ''))
     
     @torch.no_grad()
     def inference(self):

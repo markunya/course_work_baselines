@@ -2,36 +2,36 @@ import torch
 import random
 import numpy as np
 import os
+import librosa
 import math
 
 from torch.utils.data import Dataset
 from librosa.util import normalize
 
 from utils.class_registry import ClassRegistry
-from utils.data_utils import load_wav
-from utils.data_utils import MAX_WAV_VALUE
-from utils.data_utils import mel_spectrogram
+from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file_list, split_audios
+from utils.data_utils import low_pass_filter
 
 datasets_registry = ClassRegistry()
 
-@datasets_registry.add_to_registry(name="meldataset")
+WAV_AFTERNORM_COEF = 0.95
+
+@datasets_registry.add_to_registry(name='mel_dataset')
 class MelDataset(Dataset):
-    def __init__(self, files_list, root, segment_size,
-                sampling_rate, n_fft, num_mels, hop_size, win_size,
-                fmin, fmax, fmax_for_loss, fine_tuning=False, split=True):
-        self.files_list = files_list
+    def __init__(self, root, files_list_path, mel_conf, fine_tuning=False, split=True):
         self.root = root
+        self.files_list = read_file_list(files_list_path)
         self.fine_tuning = fine_tuning
         self.split = split
-        self.segment_size = segment_size
-        self.sampling_rate = sampling_rate
-        self.n_fft = n_fft
-        self.num_mels = num_mels
-        self.hop_size = hop_size
-        self.win_size = win_size
-        self.fmin = fmin
-        self.fmax = fmax
-        self.fmax_loss = fmax_for_loss
+        self.segment_size = mel_conf.segment_size
+        self.sampling_rate = mel_conf.sampling_rate
+        self.n_fft = mel_conf.n_fft
+        self.num_mels = mel_conf.mel_confnum_mels
+        self.hop_size = mel_conf.hop_size
+        self.win_size = mel_conf.win_size
+        self.fmin = mel_conf.fmin
+        self.fmax = mel_conf.fmax
+        self.fmax_loss = mel_conf.fmax_for_loss
         
         self.cached_wav = None
         self.n_cache_reuse = 1
@@ -40,25 +40,25 @@ class MelDataset(Dataset):
 
     def __getitem__(self, index, attempts=5):
         if attempts == 0:
-            raise ValueError("Unable to load a valid file after several attempts.")
+            raise ValueError('Unable to load a valid file after several attempts.')
         filename = self.files_list[index]
         try:
             if self._cache_ref_count == 0:
                 audio, sampling_rate = load_wav(os.path.join(self.root, filename))
                 audio = audio / MAX_WAV_VALUE
                 if not self.fine_tuning:
-                    audio = normalize(audio) * 0.95
+                    audio = normalize(audio) * WAV_AFTERNORM_COEF
                 self.cached_wav = audio
 
                 if sampling_rate != self.sampling_rate:
-                    raise ValueError("{} SR doesn't match target {} SR".format(
+                    raise ValueError('{} SR doesn\'t match target {} SR'.format(
                         sampling_rate, self.sampling_rate))
                 self._cache_ref_count = self.n_cache_reuse
             else:
                 audio = self.cached_wav
                 self._cache_ref_count -= 1
         except Exception as e:
-            print(f"Warning: Failed to load {filename}, error: {e}. Picking a random file instead.")
+            print(f'Warning: Failed to load {filename}, error: {e}. Picking a random file instead.')
             random_index = random.randint(0, len(self.files_list) - 1)
             return self.__getitem__(random_index, attempts=attempts-1)
 
@@ -100,10 +100,119 @@ class MelDataset(Dataset):
                                 self.sampling_rate, self.hop_size, self.win_size, self.fmin, self.fmax_loss,
                                 center=False)
 
-        return {'mel': mel.squeeze(),
+        return {
+                'mel': mel.squeeze(),
                 'wav': audio.squeeze(0),
                 'name': filename,
-                'mel_for_loss': mel_for_loss.squeeze()}
+                'mel_for_loss': mel_for_loss.squeeze()
+            }
+
+    def __len__(self):
+        return len(self.files_list)
+
+@datasets_registry.add_to_registry(name='vctk')
+class VCTKDataset(Dataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        split=True,
+        input_freq=None,
+        lowpass='default',
+    ):
+        self.root = root
+        self.files_list = read_file_list(files_list_path)
+        self.segment_size = mel_conf.segment_size
+        self.sampling_rate = mel_conf.sampling_rate
+        self.split = split
+        self.input_freq = input_freq
+        self.lowpass = lowpass
+
+    def __getitem__(self, index):
+        vctk_fn = self.files_list[index]
+
+        vctk_wav = librosa.load(
+            os.path.join(self.root, vctk_fn),
+            sr=self.sampling_rate,
+            res_type='polyphase',
+        )[0]
+        (vctk_wav, ) = split_audios(vctk_wav, self.segment_size, self.split)
+
+        lp_inp = low_pass_filter(
+            vctk_wav, self.input_freq,
+            lp_type=self.lowpass, orig_sr=self.sampling_rate
+        )
+        input_wav = normalize(lp_inp)[None] * WAV_AFTERNORM_COEF
+        assert input_wav.shape[1] == vctk_wav.size
+
+        input_wav = torch.FloatTensor(input_wav)
+        wav = torch.FloatTensor(normalize(vctk_wav) * WAV_AFTERNORM_COEF)
+        wav = wav.unsqueeze(0)
+
+        return {
+                'input_wav': input_wav,
+                'wav': wav,
+                'name': vctk_fn
+            }
+
+    def __len__(self):
+        return len(self.files_list)
+
+@datasets_registry.add_to_registry(name='voicebank')
+class VoicebankDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        noisy_wavs_dir,
+        clean_wavs_dir=None,
+        split=True,
+        input_freq=None,
+    ):
+        if clean_wavs_dir:
+            clean_wavs_dir = os.path.join(root, clean_wavs_dir)
+        noisy_wavs_dir = os.path.join(root, noisy_wavs_dir)
+        self.files_list = read_file_list(files_list_path)
+
+        self.clean_wavs_dir = clean_wavs_dir
+        self.noisy_wavs_dir = noisy_wavs_dir
+        self.segment_size = mel_conf.segment_size
+        self.sampling_rate = mel_conf.sampling_rate
+        self.split = split
+        self.input_freq = input_freq
+
+    def __getitem__(self, index):
+        fn = self.files_list[index]
+
+        clean_wav = librosa.load(
+            os.path.join(self.clean_wavs_dir, fn),
+            sr=self.sampling_rate,
+            res_type='polyphase',
+        )[0]
+        noisy_wav = librosa.load(
+            os.path.join(self.noisy_wavs_dir, fn),
+            sr=self.sampling_rate,
+            res_type='polyphase',
+        )[0]
+        clean_wav, noisy_wav = split_audios(
+            [clean_wav, noisy_wav],
+            self.segment_size, self.split
+        )
+
+        input_wav = normalize(noisy_wav)[None] * WAV_AFTERNORM_COEF
+        assert input_wav.shape[1] == clean_wav.size
+
+        input_wav = torch.FloatTensor(input_wav)
+        wav = torch.FloatTensor(normalize(clean_wav) * WAV_AFTERNORM_COEF)
+        audio = audio.unsqueeze(0)
+
+        return {
+                'input_wav': input_wav,
+                'wav': wav,
+                'name': fn
+            }
 
     def __len__(self):
         return len(self.files_list)

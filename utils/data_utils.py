@@ -1,9 +1,12 @@
 import os
+import random
 import torch
 import torchaudio
 import torch.utils.data
 import numpy as np
 import omegaconf
+import scipy
+import librosa
 from scipy.io.wavfile import read
 from librosa.filters import mel as librosa_mel_fn
 from omegaconf import OmegaConf
@@ -68,6 +71,9 @@ mel_basis = {}
 hann_window = {}
 
 def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin, fmax, center=False):
+    if isinstance(y, np.ndarray):
+        y = torch.from_numpy(y).unsqueeze(0)
+        
     if torch.min(y) < -1.:
         print('min value is ', torch.min(y))
     if torch.max(y) > 1.:
@@ -97,3 +103,43 @@ def read_file_list(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         file_list = [line.strip() for line in f.readlines() if line.strip()]
     return file_list
+
+def split_audios(audios, segment_size, split):
+    audios = [torch.FloatTensor(audio).unsqueeze(0) for audio in audios]
+    if split:
+        if audios[0].size(1) >= segment_size:
+            max_audio_start = audios[0].size(1) - segment_size
+            audio_start = random.randint(0, max_audio_start)
+            audios = [
+                audio[:, audio_start : audio_start + segment_size]
+                for audio in audios
+            ]
+        else:
+            audios = [
+                torch.nn.functional.pad(
+                    audio,
+                    (0, segment_size - audio.size(1)),
+                    "constant",
+                )
+                for audio in audios
+            ]
+    audios = [audio.squeeze(0).numpy() for audio in audios]
+    return audios
+
+def low_pass_filter(audio: np.ndarray, max_freq,
+                    lp_type="default", orig_sr=16000):
+    if lp_type == "default":
+        tmp = librosa.resample(
+            audio, orig_sr=orig_sr, target_sr=max_freq * 2, res_type="polyphase"
+        )
+    elif lp_type == "decimate":
+        sub = orig_sr / (max_freq * 2)
+        assert int(sub) == sub
+        tmp = scipy.signal.decimate(audio, int(sub))
+    else:
+        raise NotImplementedError
+    # soxr_hq is faster and better than polyphase,
+    # but requires additional libraries installed
+    # the speed difference is only 4 times, we can live with that
+    tmp = librosa.resample(tmp, orig_sr=max_freq * 2, target_sr=16000, res_type="polyphase")
+    return tmp[: audio.size]

@@ -5,12 +5,21 @@ from training.trainers.base_trainer import BaseTrainer
 
 from training.trainers.base_trainer import gan_trainers_registry
 
-@gan_trainers_registry.add_to_registry(name='hifipp_trainer')
+@gan_trainers_registry.add_to_registry(name='hifi++_trainer')
 class HifiPlusPlusTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.gen_name = "a2a_hifi++_gen"
         self.ssd_name = "hifigan_msd"
+        self.mel_kwargs = dict(
+            n_fft=config.mel.n_fft,
+            num_mels=config.mel.num_mels,
+            sampling_rate=config.mel.sampling_rate,
+            hop_size=config.mel.hop_size,
+            win_size=config.mel.win_size,
+            fmin=config.mel.fmin,
+            fmax_for_loss=config.mel.fmax_for_loss
+        )
 
     def train_step(self):
         gen = self.models[self.gen_name]
@@ -21,31 +30,24 @@ class HifiPlusPlusTrainer(BaseTrainer):
         ssd_loss_builder = self.loss_builders[self.ssd_name]
 
         batch = next(self.train_dataloader)
-        mel = batch['mel'].to(self.device)
         real_wav = batch['wav'].to(self.device)
-        real_wav = real_wav.unsqueeze(1)
-        mel_for_loss = batch['mel_for_loss'].to(self.device)
+        input_wav = batch['input_wav'].to(self.device)
+        input_wav = input_wav.unsqueeze(1)
 
-        gen_wav = gen(mel)
-        gen_mel = mel_spectrogram(gen_wav.squeeze(1),
-                                self.config.mel.n_fft,
-                                self.config.mel.num_mels,
-                                self.config.mel.sampling_rate,
-                                self.config.mel.hop_size,
-                                self.config.mel.win_size,
-                                self.config.mel.fmin,
-                                self.config.mel.fmax_for_loss)
+        gen_wav = gen(input_wav)
+        gen_mel = mel_spectrogram(gen_wav.squeeze(1), **self.mel_kwargs)
+        real_mel = mel_spectrogram(real_wav.squeese(1), **self.mel_kwargs)
 
         requires_grad(ssd, True)
         ssd_optimizer.zero_grad()
 
         ssd_real_out, ssd_gen_out, _, _ = ssd(real_wav, gen_wav.detach())
         ssd_loss, ssd_losses_dict = ssd_loss_builder.calculate_loss({
-            'msd': dict(
+            'ssd': dict(
                 discs_real_out=ssd_real_out,
                 discs_gen_out=ssd_gen_out
             )
-        }, tl_suffix='msd')
+        }, tl_suffix='ssd')
         ssd_loss.backward()
         ssd_optimizer.step()
 
@@ -57,7 +59,7 @@ class HifiPlusPlusTrainer(BaseTrainer):
         gen_loss, gen_losses_dict = gen_loss_builder.calculate_loss({
             '': dict(
                 gen_mel=gen_mel,
-                real_mel=mel_for_loss
+                real_mel=real_mel
             ),
             'ssd': dict(
                 discs_gen_out=ssd_gen_out,
@@ -81,8 +83,8 @@ class HifiPlusPlusTrainer(BaseTrainer):
         }
 
         with torch.no_grad():
-            for name, mel in zip(batch['name'], batch['mel']):
-                gen_wav = gen(mel.to(self.device)).squeeze(0)
+            for name, input_wav in zip(batch['name'], batch['input_wav']):
+                gen_wav = gen(input_wav.to(self.device)).squeeze(0)
                 
                 result_dict['gen_wav'].append(gen_wav)
                 result_dict['filename'].append(name)
