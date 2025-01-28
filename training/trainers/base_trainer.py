@@ -141,17 +141,17 @@ class BaseTrainer:
 
     def setup_datasets(self):
         self.train_dataset = datasets_registry[self.config.data.dataset](
-                self.config.data.root,
+                self.config.data.trainval_data_root,
                 self.config.data.train_data_file_path,
-                **self.config.mel,
+                self.config.mel,
                 **self.config.data.dataset_args
             )
 
         self.val_dataset = datasets_registry[self.config.data.dataset](
-                self.config.data.root,
+                self.config.data.trainval_data_root,
                 self.config.data.val_data_file_path,
+                self.config.mel,
                 split=False,
-                **self.config.mel,
                 **self.config.data.dataset_args
         )
         tqdm.write('Datasets for train and validation successfully initialized')

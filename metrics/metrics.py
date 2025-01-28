@@ -37,7 +37,8 @@ class L1MelDiff:
 class WBPesq:
     def __init__(self, config, target_sr=16000):
         self.target_sr = target_sr
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr)
+        self.device = config.exp.device
+        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr).to(self.device)
 
     def resample(self, wav):
         return self.resampler(wav.unsqueeze(0)).squeeze(0)
@@ -47,7 +48,7 @@ class WBPesq:
         batch_size = len(real_batch['wav'])
 
         for i in range(batch_size):
-            real_wav = real_batch['wav'][i]
+            real_wav = real_batch['wav'][i].to(self.device)
             gen_wav = gen_batch['gen_wav'][i]
 
             real_wav_resampled = self.resample(real_wav)
@@ -65,7 +66,8 @@ class WBPesq:
 class STOI:
     def __init__(self, config, target_sr=10000):
         self.target_sr = target_sr
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr)
+        self.device = config.exp.device
+        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr).to(self.device)
 
     def resample(self, wav):
         return self.resampler(wav.unsqueeze(0)).squeeze(0)
@@ -75,7 +77,7 @@ class STOI:
         batch_size = len(real_batch['wav'])
 
         for i in range(batch_size):
-            real_wav = real_batch['wav'][i]
+            real_wav = real_batch['wav'][i].to(self.device)
             gen_wav = gen_batch['gen_wav'][i]
 
             real_wav_resampled = self.resample(real_wav)
@@ -94,7 +96,8 @@ class SISDR:
     def __init__(self, config, target_sr=16000):
         self.target_sr = target_sr
         self.orig_sr = config.mel.sampling_rate
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr)
+        self.device = config.exp.device
+        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr).to(self.device)
 
     def resample(self, wav):
         return self.resampler(wav.unsqueeze(0)).squeeze(0)
@@ -120,11 +123,11 @@ class SISDR:
         batch_size = len(real_batch['wav'])
 
         for i in range(batch_size):
-            real_wav = real_batch['wav'][i]
+            real_wav = real_batch['wav'][i].to(self.device)
             gen_wav = gen_batch['gen_wav'][i]
 
-            real_wav_resampled = self.resample(real_wav, self.orig_sr)
-            gen_wav_resampled = self.resample(gen_wav, self.orig_sr)
+            real_wav_resampled = self.resample(real_wav)
+            gen_wav_resampled = self.resample(gen_wav)
 
             si_sdr_score = self.si_sdr(real_wav_resampled, gen_wav_resampled)
             total_si_sdr += si_sdr_score
@@ -177,8 +180,8 @@ class Wav2Vec2MOS(nn.Module):
 @metrics_registry.add_to_registry(name="mosnet")
 class MOSNet:
     def __init__(self, config):
-        self.model = Wav2Vec2MOS("weights/wave2vec2mos.pth")
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.model.sample_rate).to("cuda")
+        self.model = Wav2Vec2MOS("metrics/weights/wave2vec2mos.pth").to(config.exp.device)
+        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.model.sample_rate).to(config.exp.device)
 
     def __call__(self, real_batch, gen_batch):
         mos_scores = []

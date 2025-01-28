@@ -9,8 +9,9 @@ from torch.utils.data import Dataset
 from librosa.util import normalize
 
 from utils.class_registry import ClassRegistry
-from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file_list, split_audios
+from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file_list, split_audios,debug_msg
 from utils.data_utils import low_pass_filter
+from utils.model_utils import closest_power_of_two
 
 datasets_registry = ClassRegistry()
 
@@ -137,7 +138,7 @@ class VCTKDataset(Dataset):
             sr=self.sampling_rate,
             res_type='polyphase',
         )[0]
-        (vctk_wav, ) = split_audios(vctk_wav, self.segment_size, self.split)
+        (vctk_wav, ) = split_audios([vctk_wav], self.segment_size, self.split)
 
         lp_inp = low_pass_filter(
             vctk_wav, self.input_freq,
@@ -147,12 +148,15 @@ class VCTKDataset(Dataset):
         assert input_wav.shape[1] == vctk_wav.size
 
         input_wav = torch.FloatTensor(input_wav)
+        pad_size = closest_power_of_two(input_wav.shape[-1]) - input_wav.shape[-1]
+        input_wav = torch.nn.functional.pad(input_wav, (0, pad_size))
         wav = torch.FloatTensor(normalize(vctk_wav) * WAV_AFTERNORM_COEF)
-        wav = wav.unsqueeze(0)
+        pad_size = closest_power_of_two(wav.shape[-1]) - wav.shape[-1]
+        wav = torch.nn.functional.pad(wav, (0, pad_size))
 
         return {
-                'input_wav': input_wav,
-                'wav': wav,
+                'input_wav': input_wav.squeeze(),
+                'wav': wav.squeeze(),
                 'name': vctk_fn
             }
 
@@ -206,11 +210,10 @@ class VoicebankDataset(torch.utils.data.Dataset):
 
         input_wav = torch.FloatTensor(input_wav)
         wav = torch.FloatTensor(normalize(clean_wav) * WAV_AFTERNORM_COEF)
-        audio = audio.unsqueeze(0)
 
         return {
-                'input_wav': input_wav,
-                'wav': wav,
+                'input_wav': input_wav.squeeze(),
+                'wav': wav.squeeze(),
                 'name': fn
             }
 

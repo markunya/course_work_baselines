@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils.model_utils import closest_power_of_two, init_weights
 from torch.nn.utils.parametrizations import weight_norm, spectral_norm
-from utils.data_utils import mel_spectrogram
+from utils.data_utils import mel_spectrogram, debug_msg
 from librosa.filters import mel as librosa_mel_fn
 from .models import models_registry, LRELU_SLOPE, ResBlock1, ResBlock2
 from typing import Literal
@@ -713,6 +713,7 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
     def get_melspec(x):
         shape = x.shape
         x = x.view(shape[0] * shape[1], shape[2])
+
         x = mel_spectrogram(x, 1024, 80, 16000, 256, 1024, 0, 8000)
         x = x.view(shape[0], -1, x.shape[-1])
         return x
@@ -744,6 +745,7 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
     def forward(self, x):
         x_orig = x.clone()
         x_orig = x_orig[:, :, : x_orig.shape[2] // 1024 * 1024]
+
         x = self.get_melspec(x_orig)
         x = self.apply_spectralunet(x)
         x = self.hifi(x)

@@ -1,5 +1,5 @@
 exp:
-    project_name: hifigan
+    project_name: hifi++
     exp_dir: experiment
     device: cuda
     seed: 1234

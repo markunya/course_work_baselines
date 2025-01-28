@@ -1,5 +1,5 @@
 exp:
-    project_name: hifigan
+    project_name: hifi++
     exp_dir: experiment
     device: cuda
     seed: 1234
@@ -26,11 +26,11 @@ data:
     train_data_file_path: "datasets/VCTK_split/train_files.txt"
     val_data_file_path: "datasets/VCTK_split/val_files.txt"
     train_batch_size: 32
-    workers: 8
+    workers: 16
 
 train:
     trainer: hifi++_trainer
-    val_metrics: ["wb_pesq", "stoi", "si_sidr", "mosnet"]
+    val_metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
     start_step: 1
     steps: 500000
     log_step: 250

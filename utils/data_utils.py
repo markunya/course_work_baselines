@@ -13,6 +13,11 @@ from omegaconf import OmegaConf
 
 MAX_WAV_VALUE = 32768.0
 
+def debug_msg(str):
+    print('-'*20)
+    print(str)
+    print('-'*20)
+
 def apply_inheritance(global_config):
     def apply_inheritance_impl(config):
         nonlocal global_config
@@ -105,7 +110,7 @@ def read_file_list(file_path):
     return file_list
 
 def split_audios(audios, segment_size, split):
-    audios = [torch.FloatTensor(audio).unsqueeze(0) for audio in audios]
+    audios = [torch.FloatTensor(torch.from_numpy(audio)).unsqueeze(0) for audio in audios]
     if split:
         if audios[0].size(1) >= segment_size:
             max_audio_start = audios[0].size(1) - segment_size
@@ -128,6 +133,8 @@ def split_audios(audios, segment_size, split):
 
 def low_pass_filter(audio: np.ndarray, max_freq,
                     lp_type="default", orig_sr=16000):
+    if lp_type == "random":
+        lp_type = random.choice(['default', 'decimate'])
     if lp_type == "default":
         tmp = librosa.resample(
             audio, orig_sr=orig_sr, target_sr=max_freq * 2, res_type="polyphase"

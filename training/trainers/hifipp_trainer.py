@@ -1,6 +1,6 @@
 import torch
-from utils.data_utils import mel_spectrogram
-from utils.model_utils import requires_grad
+from utils.data_utils import mel_spectrogram, debug_msg
+from utils.model_utils import requires_grad, closest_power_of_two
 from training.trainers.base_trainer import BaseTrainer
 
 from training.trainers.base_trainer import gan_trainers_registry
@@ -18,7 +18,7 @@ class HifiPlusPlusTrainer(BaseTrainer):
             hop_size=config.mel.hop_size,
             win_size=config.mel.win_size,
             fmin=config.mel.fmin,
-            fmax_for_loss=config.mel.fmax_for_loss
+            fmax=config.mel.fmax_for_loss
         )
 
     def train_step(self):
@@ -30,13 +30,12 @@ class HifiPlusPlusTrainer(BaseTrainer):
         ssd_loss_builder = self.loss_builders[self.ssd_name]
 
         batch = next(self.train_dataloader)
-        real_wav = batch['wav'].to(self.device)
-        input_wav = batch['input_wav'].to(self.device)
-        input_wav = input_wav.unsqueeze(1)
+        real_wav = batch['wav'].to(self.device).unsqueeze(1)
+        input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
 
         gen_wav = gen(input_wav)
         gen_mel = mel_spectrogram(gen_wav.squeeze(1), **self.mel_kwargs)
-        real_mel = mel_spectrogram(real_wav.squeese(1), **self.mel_kwargs)
+        real_mel = mel_spectrogram(real_wav.squeeze(1), **self.mel_kwargs)
 
         requires_grad(ssd, True)
         ssd_optimizer.zero_grad()
@@ -84,7 +83,7 @@ class HifiPlusPlusTrainer(BaseTrainer):
 
         with torch.no_grad():
             for name, input_wav in zip(batch['name'], batch['input_wav']):
-                gen_wav = gen(input_wav.to(self.device)).squeeze(0)
+                gen_wav = gen(input_wav.to(self.device)[None,None]).squeeze()
                 
                 result_dict['gen_wav'].append(gen_wav)
                 result_dict['filename'].append(name)
