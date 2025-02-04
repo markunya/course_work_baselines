@@ -1,12 +1,12 @@
 import os
 import torch
+import numpy as np
 
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
 from training.loggers import TrainingLogger
-from training.losses.losses import LossBuilder
+from training.losses.loss_builder import LossBuilder
 from torch.utils.data import DataLoader
-from training.schedulers import ReduceLrOnEach
 from tqdm import tqdm
 from utils.class_registry import ClassRegistry
 
@@ -16,7 +16,7 @@ from training.schedulers import schedulers_registry
 from datasets.datasets import datasets_registry
 from metrics.metrics import metrics_registry
 
-from utils.data_utils import read_file_list
+from utils.data_utils import save_wavs_to_dir
 
 gan_trainers_registry = ClassRegistry()
 
@@ -34,11 +34,11 @@ class BaseTrainer:
         self.setup_optimizers()
         self.setup_losses()
 
-        self.setup_metrics()
+        self.setup_val_metrics()
         self.setup_logger()
 
-        self.setup_datasets()
-        self.setup_dataloaders()
+        self.setup_trainval_datasets()
+        self.setup_trainval_dataloaders()
 
 
     def setup_inference(self):
@@ -46,11 +46,11 @@ class BaseTrainer:
 
         self.setup_models()
 
-        self.setup_metrics()
+        self.setup_inf_metrics()
         self.setup_logger()
 
-        self.setup_datasets()
-        self.setup_dataloaders()
+        self.setup_inference_dataset()
+        self.setup_inference_dataloader()
 
     def setup_experiment_dir(self):
         self.exp_dir = self.config.exp.exp_dir
@@ -127,19 +127,26 @@ class BaseTrainer:
             self.loss_builders[model_name] = LossBuilder(model_config)
         tqdm.write(f'Loss functions successfully initialized')
 
-    def setup_metrics(self):
+    def setup_val_metrics(self):
         self.metrics = []
         for metric_name in self.config.train.val_metrics:
             metric = metrics_registry[metric_name](self.config)
             self.metrics.append((metric_name, metric))
-        tqdm.write('Metrics successfully initialized')
+        tqdm.write('Validation metrics successfully initialized')
+
+    def setup_inf_metrics(self):
+        self.metrics = []
+        for metric_name in self.config.inference.metrics:
+            metric = metrics_registry[metric_name](self.config)
+            self.metrics.append((metric_name, metric))
+        tqdm.write('Inference metrics successfully initialized')
 
     def setup_logger(self):
         self.logger = TrainingLogger(self.config)
         if self.config.exp.use_wandb:
             tqdm.write('Logger successfully initialized')
 
-    def setup_datasets(self):
+    def setup_trainval_datasets(self):
         self.train_dataset = datasets_registry[self.config.data.dataset](
                 self.config.data.trainval_data_root,
                 self.config.data.train_data_file_path,
@@ -156,6 +163,15 @@ class BaseTrainer:
         )
         tqdm.write('Datasets for train and validation successfully initialized')
 
+    def setup_inference_dataset(self):
+        self.inference_dataset = datasets_registry[self.config.data.dataset](
+                self.config.data.inference_data_root,
+                self.config.data.inference_data_file_path,
+                self.config.mel,
+                split=False,
+                **self.config.data.dataset_args
+            )
+        tqdm.write('Dataset for inference successfully initialized')
     
     def setup_train_dataloader(self):
         self.train_dataloader = InfiniteLoader(
@@ -175,7 +191,16 @@ class BaseTrainer:
             pin_memory=True,
         )
 
-    def setup_dataloaders(self):
+    def setup_inference_dataloader(self):
+        self.inference_dataloader = DataLoader(
+            self.inference_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=self.config.data.workers,
+            pin_memory=True,
+        )
+
+    def setup_trainval_dataloaders(self):
         self.setup_train_dataloader()
         self.setup_val_dataloader()
         tqdm.write('Dataloaders successfully initialized')
@@ -188,21 +213,23 @@ class BaseTrainer:
         for model in self.models.values():
             model.eval()
 
+    def step_schedulers(self):
+        for scheduler in self.schedulers.values():
+            step = (scheduler.reduce_time == 'step')
+            epoch = (scheduler.reduce_time == 'epoch') \
+                        and (self.step % len(self.train_dataloader) == 0)
+            period = (scheduler.reduce_time == 'period') \
+                        and (self.step % scheduler.period == 0)
+            if step or epoch or period:
+                scheduler.step()
+
     def training_loop(self):
         self.to_train()
 
         with tqdm(total=self.config.train.steps, desc='Training Progress', unit='step') as progress:
             for self.step in range(self.start_step, self.config.train.steps + 1):
                 losses_dict = self.train_step()
-                
-                for scheduler_name in self.schedulers:
-                    if self.schedulers[scheduler_name].reduce_time == ReduceLrOnEach.step:
-                        self.schedulers[scheduler_name].step()
-
-                if self.step % len(self.train_dataloader) == 0:
-                    for scheduler_name in self.schedulers:
-                        if self.schedulers[scheduler_name].reduce_time == ReduceLrOnEach.epoch:
-                            self.schedulers[scheduler_name].step()
+                self.step_schedulers()
 
                 self.logger.update_losses(losses_dict)
                 progress.set_postfix({
@@ -210,6 +237,16 @@ class BaseTrainer:
                     for model_name, optimizer in self.optimizers.items()
                 })
                 progress.update(1)
+
+                if self.step == self.start_step:
+                    iterator = iter(self.val_dataloader)
+                    for _ in range(self.config.exp.log_batch_size):
+                        batch = next(iterator)
+                        input_batch = {
+                            'gen_wav': batch['input_wav'] if 'input_wav' in batch else batch['wav'],
+                            'name': batch['name']
+                        }
+                        self.logger.log_synthesized_batch(input_batch, self.config.mel.sampling_rate, step=self.step)
 
                 if self.step % self.config.train.val_step == 0:
                     self.validate()
@@ -234,29 +271,65 @@ class BaseTrainer:
                 tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:
                 tqdm.write(f'An error occured when saving checkpoint for {model_name} on step {self.step}: {e}')
+    
+    def _compute_metrics(self, batch, gen_batch, metrics_dict, action):
+        for metric_name, metric in self.metrics:
+            value = metric(batch, gen_batch)
+            if isinstance(value, (np.ndarray, list)) and len(value) == 1:
+                value = value.item() if isinstance(value, np.ndarray) else value[0]
+            elif isinstance(value, torch.Tensor):
+                value = value.item()
+            metrics_dict[f'{action}_{metric_name}'] = float(value)
 
-    @torch.no_grad()
-    def validate(self):
-        self.to_eval()
-        metrics_dict = {}
-        for batch in self.val_dataloader:
-            for metric_name, metric in self.metrics:
-                metrics_dict['val_' + metric_name] = metric(batch, self.synthesize_wavs(batch))
-
-        self.logger.log_val_metrics(metrics_dict, self.step)
-
-        iterator = iter(self.val_dataloader)
+    def _log_synthesized_batch(self, iterator):
         for _ in range(self.config.exp.log_batch_size):
             batch = next(iterator)
             gen_batch = self.synthesize_wavs(batch)
             self.logger.log_synthesized_batch(gen_batch, self.config.mel.sampling_rate, step=self.step)
 
+    @torch.no_grad()
+    def validate(self):
+        self.to_eval()
+        metrics_dict = {}
+
+        for batch in self.val_dataloader:
+            gen_batch = self.synthesize_wavs(batch)
+            self._compute_metrics(batch, gen_batch, metrics_dict, action='val')
+
+        self.logger.log_metrics(metrics_dict, self.step)
+        self._log_synthesized_batch(iter(self.val_dataloader))
+
         tqdm.write('Validation completed.' + 
                 (f'Metrics: {metrics_dict}' if len(metrics_dict) > 0 else ''))
-    
+
     @torch.no_grad()
     def inference(self):
-        raise NotImplementedError('Will be implemented later')
+        self.to_eval()
+        metrics_dict = {}
+
+        with tqdm(total=len(self.inference_dataloader), desc='Inference Progress', unit='step') as progress:
+            for batch in self.inference_dataloader:
+                gen_batch = self.synthesize_wavs(batch)
+                run_inf_dir = os.path.join(self.inference_out_dir, self.config.exp.run_name)
+                sr = self.config.mel.sampling_rate
+                
+                if 'input_wav' in batch:
+                    save_wavs_to_dir(batch['input_wav'], batch['name'],
+                                    os.path.join(run_inf_dir, 'input'), sr)
+                save_wavs_to_dir(batch['wav'], batch['name'],
+                                os.path.join(run_inf_dir, 'ground_truth'), sr)
+                save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
+                                os.path.join(run_inf_dir, 'generated'), sr)
+
+                self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
+
+                progress.update(1)
+
+        self.logger.log_metrics(metrics_dict, 0)
+        self._log_synthesized_batch(iter(self.inference_dataloader))
+
+        tqdm.write('Inference completed.' + 
+                (f'Metrics: {metrics_dict}' if len(metrics_dict) > 0 else ''))
     
     @abstractmethod
     def synthesize_wavs(self, batch):

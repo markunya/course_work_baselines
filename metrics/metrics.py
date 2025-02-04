@@ -1,5 +1,6 @@
 import torch
 import torchaudio
+from abc import ABC, abstractmethod
 import torchaudio.transforms as T
 from pesq import pesq
 import numpy as np
@@ -12,6 +13,19 @@ from transformers import Wav2Vec2Model, Wav2Vec2Processor
 
 metrics_registry = ClassRegistry()
 
+class ResamleMetric(ABC):
+    def __init__(self, config, target_sr):
+        self.target_sr = target_sr
+        self.device = config.exp.device
+        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate,
+                                new_freq=self.target_sr).to(self.device)
+        
+    def resample(self, wav):
+        return self.resampler(wav.unsqueeze(0)).squeeze(0)
+    
+    @abstractmethod
+    def __call__(self, real_batch, gen_batch):
+        pass
 
 @metrics_registry.add_to_registry(name='l1_mel_diff')
 class L1MelDiff:
@@ -34,105 +48,60 @@ class L1MelDiff:
         return self.l1_loss(real_mel, gen_mel)
 
 @metrics_registry.add_to_registry(name='wb_pesq')
-class WBPesq:
-    def __init__(self, config, target_sr=16000):
-        self.target_sr = target_sr
-        self.device = config.exp.device
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr).to(self.device)
-
-    def resample(self, wav):
-        return self.resampler(wav.unsqueeze(0)).squeeze(0)
+class WBPesq(ResamleMetric):
+    def __init__(self, config):
+        super().__init__(config, 16000)
 
     def __call__(self, real_batch, gen_batch):
-        total_pesq = 0.0
-        batch_size = len(real_batch['wav'])
-
-        for i in range(batch_size):
-            real_wav = real_batch['wav'][i].to(self.device)
-            gen_wav = gen_batch['gen_wav'][i]
-
-            real_wav_resampled = self.resample(real_wav)
-            gen_wav_resampled = self.resample(gen_wav)
+        scores = []
+        for real_wav, gen_wav in zip(real_batch['wav'], gen_batch['gen_wav']):
+            real_wav_resampled = self.resample(real_wav.to(self.device))
+            gen_wav_resampled = self.resample(gen_wav.to(self.device))
 
             real_wav_np = real_wav_resampled.cpu().numpy()
             gen_wav_np = gen_wav_resampled.cpu().numpy()
+            try:
+                pesq_score = pesq(self.target_sr, real_wav_np, gen_wav_np, 'wb')
+            except:
+                pesq_score = 1
+            scores.append(pesq_score)
 
-            pesq_score = pesq(self.target_sr, real_wav_np, gen_wav_np, 'wb')
-            total_pesq += pesq_score
-
-        return total_pesq / batch_size
+        return np.mean(scores)
     
 @metrics_registry.add_to_registry(name='stoi')
 class STOI:
-    def __init__(self, config, target_sr=10000):
-        self.target_sr = target_sr
-        self.device = config.exp.device
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr).to(self.device)
-
-    def resample(self, wav):
-        return self.resampler(wav.unsqueeze(0)).squeeze(0)
+    def __init__(self, config):
+        self.sr = config.mel.sampling_rate
 
     def __call__(self, real_batch, gen_batch):
-        total_stoi = 0.0
-        batch_size = len(real_batch['wav'])
+        scores = []
+        for real_wav, gen_wav in zip(real_batch['wav'], gen_batch['gen_wav']):
+            real_wav_np = real_wav.cpu().numpy()
+            gen_wav_np = gen_wav.cpu().numpy()
 
-        for i in range(batch_size):
-            real_wav = real_batch['wav'][i].to(self.device)
-            gen_wav = gen_batch['gen_wav'][i]
+            stoi_score = stoi(real_wav_np, gen_wav_np, self.sr, extended=True)
+            scores.append(stoi_score)
 
-            real_wav_resampled = self.resample(real_wav)
-            gen_wav_resampled = self.resample(gen_wav)
-
-            real_wav_np = real_wav_resampled.cpu().numpy()
-            gen_wav_np = gen_wav_resampled.cpu().numpy()
-
-            stoi_score = stoi(real_wav_np, gen_wav_np, self.target_sr, extended=False)
-            total_stoi += stoi_score
-
-        return total_stoi / batch_size
+        return np.mean(scores)
 
 @metrics_registry.add_to_registry(name='si_sdr')
 class SISDR:
-    def __init__(self, config, target_sr=16000):
-        self.target_sr = target_sr
-        self.orig_sr = config.mel.sampling_rate
+    def __init__(self, config):
         self.device = config.exp.device
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.target_sr).to(self.device)
-
-    def resample(self, wav):
-        return self.resampler(wav.unsqueeze(0)).squeeze(0)
-
-    def si_sdr(self, reference, estimation, eps=1e-8):
-        if reference.size() != estimation.size():
-            raise ValueError("Signal sizes must be equal")
-
-        reference_energy = torch.sum(reference ** 2) + eps
-        scaling_factor = torch.sum(reference * estimation) / reference_energy
-        projection = scaling_factor * reference
-
-        noise = estimation - projection
-
-        target_energy = torch.sum(projection ** 2) + eps
-        noise_energy = torch.sum(noise ** 2) + eps
-
-        si_sdr_value = 10 * torch.log10(target_energy / noise_energy)
-        return si_sdr_value
 
     def __call__(self, real_batch, gen_batch):
-        total_si_sdr = 0.0
-        batch_size = len(real_batch['wav'])
+        real_wavs = real_batch['wav'].to(self.device).squeeze(1)
+        gen_wavs = gen_batch['gen_wav'].to(self.device).squeeze(1)
 
-        for i in range(batch_size):
-            real_wav = real_batch['wav'][i].to(self.device)
-            gen_wav = gen_batch['gen_wav'][i]
+        alpha = (gen_wavs * real_wavs).sum(
+            dim=1, keepdim=True
+        ) / real_wavs.square().sum(dim=1, keepdim=True)
+        real_wavs_scaled = alpha * real_wavs
+        e_target = real_wavs_scaled.square().sum(dim=1)
+        e_res = (gen_wavs - real_wavs).square().sum(dim=1)
+        si_sdr = 10 * torch.log10(e_target / e_res).cpu().numpy()
 
-            real_wav_resampled = self.resample(real_wav)
-            gen_wav_resampled = self.resample(gen_wav)
-
-            si_sdr_score = self.si_sdr(real_wav_resampled, gen_wav_resampled)
-            total_si_sdr += si_sdr_score
-
-        return total_si_sdr / batch_size    
+        return np.mean(si_sdr)   
 
 def extract_prefix(prefix, weights):
     result = OrderedDict()
@@ -178,21 +147,17 @@ class Wav2Vec2MOS(nn.Module):
 
 
 @metrics_registry.add_to_registry(name="mosnet")
-class MOSNet:
+class MOSNet(ResamleMetric):
     def __init__(self, config):
         self.model = Wav2Vec2MOS("metrics/weights/wave2vec2mos.pth").to(config.exp.device)
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate, new_freq=self.model.sample_rate).to(config.exp.device)
+        super().__init__(config, self.model.sample_rate)
 
     def __call__(self, real_batch, gen_batch):
         mos_scores = []
-        batch_size = len(gen_batch["gen_wav"])
 
-        for i in range(batch_size):
-            gen_wav = gen_batch["gen_wav"][i]
-
+        for gen_wav in gen_batch['gen_wav']:
             gen_wav = gen_wav / gen_wav.abs().max()
-
-            gen_wav_resampled = self.resampler(gen_wav.unsqueeze(0)).squeeze(0)
+            gen_wav_resampled = self.resample(gen_wav)
 
             input_values = self.model.processor(
                 gen_wav_resampled.cpu().numpy(), return_tensors="pt", sampling_rate=self.model.sample_rate
@@ -200,6 +165,6 @@ class MOSNet:
 
             with torch.no_grad():
                 mos_score = self.model(input_values).item()
-                mos_scores.append(mos_score)
+            mos_scores.append(mos_score)
 
         return np.mean(mos_scores)

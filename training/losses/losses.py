@@ -1,52 +1,65 @@
-import inspect
-from utils.class_registry import ClassRegistry
+import torch
+import torchaudio
+import torchaudio.transforms as T
+from torch import nn
+from .loss_builder import losses_registry
 
-losses_registry = ClassRegistry()
+@losses_registry.add_to_registry(name='feature_loss')
+class FeatureLoss(nn.Module):
+    def forward(self, fmaps_real, fmaps_gen):
+        loss = 0
+        for one_disc_fmaps_real, one_disc_fmaps_gen in zip(fmaps_real, fmaps_gen):
+            for fmap_real, fmap_gen in zip(one_disc_fmaps_real, one_disc_fmaps_gen):
+                loss += torch.mean(torch.abs(fmap_real - fmap_gen))
+        return loss
 
-class LossBuilder:
-    def __init__(self, config):
-        self.losses = {}
-        self.coefs = {}
+@losses_registry.add_to_registry(name='disc_loss')
+class DiscriminatorLoss(nn.Module):        
+    def forward(self, discs_real_out, discs_gen_out):
+        loss = 0
+        for disc_real_out, disc_gen_out in zip(discs_real_out, discs_gen_out):
+            real_one_disc_loss = torch.mean((1 - disc_real_out)**2)
+            gen_one_disc_loss = torch.mean(disc_gen_out**2)
+            loss += (real_one_disc_loss + gen_one_disc_loss)
+        return loss
 
-        for loss_name, loss_coef in config['losses'].items():
-            self.coefs[loss_name] = loss_coef
-            loss_args = {}
-            if 'losses_args' in config and loss_name in config['losses_args']:
-                loss_args = config['losses_args']['loss_name']
-            self.losses[loss_name] = losses_registry[loss_name](**loss_args)
+@losses_registry.add_to_registry(name='gen_loss')
+class GeneratorLoss(nn.Module):
+    def forward(self, discs_gen_out):
+        loss = 0
+        for disc_gen_out in discs_gen_out:
+            one_disc_loss = torch.mean((1 - disc_gen_out)**2)
+            loss += one_disc_loss
+        return loss
 
-    def calculate_loss(self, info, tl_suffix=None):
-        loss_dict = {}
-        total_loss_str = 'total_loss'
-        if tl_suffix is not None:
-            total_loss_str += '_' + tl_suffix
-        loss_dict[total_loss_str] = 0.0
+@losses_registry.add_to_registry(name='l1_mel_loss')
+class L1Loss(nn.L1Loss):
+    def forward(self, gen_mel, real_mel):
+        return super().forward(gen_mel, real_mel)
 
-        calculated_losses_set = set()
+@losses_registry.add_to_registry(name='lmos')
+class LMOSLoss(nn.Module):
+    def __init__(self, target_sr=16000, fft_size=1024, hop_length=256, extraction_layer=7):
+        super().__init__()
+        self.target_sr = target_sr
+        self.fft_size = fft_size
+        self.hop_length = hop_length
 
-        for loss_name, loss in self.losses.items():
-            signature = inspect.signature(loss.forward)
-            param_names = [param.name for param in signature.parameters.values()]
+        bundle = torchaudio.pipelines.WAVLM_LARGE
+        self.wavlm = bundle.get_model()
+        self.extraction_layer = extraction_layer
+        self.stft = T.Spectrogram(n_fft=fft_size, hop_length=hop_length, power=1)
 
-            current_loss = 0.0
-            for suffix, kwargs in info.items():
-                if suffix != '':
-                    suffix = '_' + suffix
+    def forward(self, real_wav, gen_wav):
+        with torch.no_grad():
+            real_features = self.wavlm.extract_features(real_wav)[self.extraction_layer]
+            gen_features = self.wavlm.extract_features(gen_wav)[self.extraction_layer]
 
-                loss_args = {param: kwargs[param] for param in param_names if param in kwargs}
-                if len(loss_args) < len(param_names):
-                    continue
-                
-                loss_val = loss(**loss_args)
-                calculated_losses_set.add(loss_name)
-                current_loss += loss_val
-                loss_dict[loss_name + suffix] = float(loss_val)
-    
-            loss_dict[total_loss_str] += self.coefs[loss_name] * current_loss
+        feature_loss = torch.norm(real_features - gen_features, p=2, dim=-1).mean()
 
-        not_calculated_losses = list(set(self.losses.keys()).difference(calculated_losses_set))
-        if len(not_calculated_losses) > 0:
-            raise RuntimeWarning(f'Losses {not_calculated_losses} from config was not calculated.'+
-                                'Possibly beacuse of was not given enough arguments for that.')
+        real_stft = self.stft(real_wav)
+        gen_stft = self.stft(gen_wav)
+        stft_loss = torch.norm(real_stft - gen_stft, p=1, dim=-1).mean()
 
-        return loss_dict[total_loss_str], loss_dict
+        lmos_loss = 100 * feature_loss + stft_loss
+        return lmos_loss

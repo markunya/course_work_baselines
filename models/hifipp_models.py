@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils.model_utils import closest_power_of_two, init_weights
 from torch.nn.utils.parametrizations import weight_norm, spectral_norm
-from utils.data_utils import mel_spectrogram, debug_msg
+from utils.data_utils import mel_spectrogram
 from librosa.filters import mel as librosa_mel_fn
 from .models import models_registry, LRELU_SLOPE, ResBlock1, ResBlock2
 from typing import Literal

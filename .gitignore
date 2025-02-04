@@ -151,8 +151,10 @@ cache
 *.out
 *.sbatch
 
-expirement
+experiment
 kaggle.json
+
+datasets/augmentations.ipynb
 
 #datasets
 VCTK/

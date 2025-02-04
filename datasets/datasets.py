@@ -27,7 +27,7 @@ class MelDataset(Dataset):
         self.segment_size = mel_conf.segment_size
         self.sampling_rate = mel_conf.sampling_rate
         self.n_fft = mel_conf.n_fft
-        self.num_mels = mel_conf.mel_confnum_mels
+        self.num_mels = mel_conf.num_mels
         self.hop_size = mel_conf.hop_size
         self.win_size = mel_conf.win_size
         self.fmin = mel_conf.fmin
@@ -171,7 +171,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         files_list_path,
         mel_conf,
         noisy_wavs_dir,
-        clean_wavs_dir=None,
+        clean_wavs_dir,
         split=True,
         input_freq=None,
     ):
@@ -188,7 +188,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         self.input_freq = input_freq
 
     def __getitem__(self, index):
-        fn = self.files_list[index]
+        fn = self.files_list[index] + '.wav'
 
         clean_wav = librosa.load(
             os.path.join(self.clean_wavs_dir, fn),
@@ -210,6 +210,10 @@ class VoicebankDataset(torch.utils.data.Dataset):
 
         input_wav = torch.FloatTensor(input_wav)
         wav = torch.FloatTensor(normalize(clean_wav) * WAV_AFTERNORM_COEF)
+        pad_size = closest_power_of_two(input_wav.shape[-1]) - input_wav.shape[-1]
+        input_wav = torch.nn.functional.pad(input_wav, (0, pad_size))
+        pad_size = closest_power_of_two(wav.shape[-1]) - wav.shape[-1]
+        wav = torch.nn.functional.pad(wav, (0, pad_size))
 
         return {
                 'input_wav': input_wav.squeeze(),

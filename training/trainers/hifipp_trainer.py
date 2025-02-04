@@ -10,7 +10,7 @@ class HifiPlusPlusTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.gen_name = "a2a_hifi++_gen"
-        self.ssd_name = "hifigan_msd"
+        self.ssd_name = "msd"
         self.mel_kwargs = dict(
             n_fft=config.mel.n_fft,
             num_mels=config.mel.num_mels,
@@ -78,7 +78,7 @@ class HifiPlusPlusTrainer(BaseTrainer):
         
         result_dict = {
             'gen_wav': [],
-            'filename': []
+            'name': []
         }
 
         with torch.no_grad():
@@ -86,7 +86,7 @@ class HifiPlusPlusTrainer(BaseTrainer):
                 gen_wav = gen(input_wav.to(self.device)[None,None]).squeeze()
                 
                 result_dict['gen_wav'].append(gen_wav)
-                result_dict['filename'].append(name)
+                result_dict['name'].append(name)
         
         result_dict['gen_wav'] = torch.stack(result_dict['gen_wav'])
         return result_dict

@@ -1,2 +1,2 @@
-from .losses import losses_registry
-from . import hifigan_losses
+from .loss_builder import losses_registry
+from . import losses

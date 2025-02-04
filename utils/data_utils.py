@@ -42,11 +42,14 @@ def load_config():
     config = apply_inheritance(config)
     return config
 
-def save_wavs_to_dir(wavs_dict, path, sample_rate):
+def save_wavs_to_dir(wav_batch, name_batch, path, sample_rate):
     os.makedirs(path, exist_ok=True)
-    for name, wav in wavs_dict.items():
-        file_path = os.path.join(path, f"{name}.wav")
-        torchaudio.save(file_path, wav.unsqueeze(0), sample_rate)
+    for name, wav in zip(name_batch, wav_batch):
+        if not name.endswith('.wav'):
+            name += '.wav'
+        file_path = os.path.join(path, name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        torchaudio.save(file_path, wav.unsqueeze(0).cpu(), sample_rate)
 
 def load_wav(full_path):
     sampling_rate, data = read(full_path)

@@ -94,7 +94,7 @@ class HifiGan_DiscriminatorP(torch.nn.Module):
 
         return x, fmaps
 
-@models_registry.add_to_registry(name='hifigan_mpd')
+@models_registry.add_to_registry(name='mpd')
 class HifiGan_MultiPeriodDiscriminator(torch.nn.Module):
     def __init__(self):
         super(HifiGan_MultiPeriodDiscriminator, self).__init__()
@@ -149,7 +149,7 @@ class HifiGan_DiscriminatorS(torch.nn.Module):
 
         return x, fmaps
 
-@models_registry.add_to_registry(name='hifigan_msd')
+@models_registry.add_to_registry(name='msd')
 class HifiGan_MultiScaleDiscriminator(torch.nn.Module):
     def __init__(self, same_scale=False):
         super(HifiGan_MultiScaleDiscriminator, self).__init__()

@@ -48,13 +48,13 @@ class TrainingLogger:
         self.losses_memory.clear()
 
     @log_if_enabled
-    def log_val_metrics(self, val_metrics: dict, step: int):
-        self.logger.log_values(val_metrics, step)
+    def log_metrics(self, metrics: dict, step: int):
+        self.logger.log_values(metrics, step)
 
     @log_if_enabled
     def log_synthesized_batch(self, gen_batch, sample_rate, step):
         wavs_dict = {}
-        for name, gen_wav in zip(gen_batch['filename'], 
+        for name, gen_wav in zip(gen_batch['name'], 
                                 gen_batch['gen_wav']):
             wavs_dict[name] = gen_wav.cpu()
         self.logger.log_wavs(wavs_dict, sample_rate, step)

@@ -10,8 +10,8 @@ class HifiGanTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.gen_name = 'hifigan_gen'    
-        self.mpd_name = 'hifigan_mpd'
-        self.msd_name = 'hifigan_msd'
+        self.mpd_name = 'mpd'
+        self.msd_name = 'msd'
 
     def train_step(self):
         gen = self.models[self.gen_name]
@@ -101,7 +101,7 @@ class HifiGanTrainer(BaseTrainer):
         
         result_dict = {
             'gen_wav': [],
-            'filename': []
+            'name': []
         }
 
         with torch.no_grad():
@@ -109,7 +109,7 @@ class HifiGanTrainer(BaseTrainer):
                 gen_wav = gen(mel.to(self.device)).squeeze(0)
                 
                 result_dict['gen_wav'].append(gen_wav)
-                result_dict['filename'].append(name)
+                result_dict['name'].append(name)
         
         result_dict['gen_wav'] = torch.stack(result_dict['gen_wav'])
         return result_dict

@@ -1,5 +1,5 @@
 exp:
-    project_name: hifi++
+    project_name: # your project name
     exp_dir: experiment
     device: cuda
     seed: 1234
@@ -18,26 +18,30 @@ mel:
     fmax_for_loss: null
 
 data:
-    dataset: vctk
+    dataset: voicebank
     dataset_args:
-        input_freq: 1000
-        lowpass: "random"
         clean_wavs_dir: "clean"
         noisy_wavs_dir: "noisy"
-    trainval_data_root: "../voicebank-demand/"
-    train_data_file_path: "datasets/voicebank-demand/train_files.txt"
-    val_data_file_path: "datasets/voicebank-demand/val_files.txt"
+    trainval_data_root: # "/voicebank-demand/"
+    train_data_file_path: "datasets/splits/voicebank-demand_split/train.scp"
+    val_data_file_path: "datasets/splits/voicebank-demand_split/test.scp"
+    inference_data_root: # "/voicebank-demand/"
+    inference_data_file_path: "datasets/splits/voicebank-demand_split/test.scp"
     train_batch_size: 32
-    workers: 8
+    workers: 16
 
 train:
     trainer: hifi++_trainer
-    val_metrics: ["wb_pesq", "stoi", "si_sidr", "mosnet"]
+    val_metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
     start_step: 1
-    steps: 500000
+    steps: 80000
     log_step: 250
     checkpoint_step: 10000
     val_step: 500
+
+inference:
+    trainer: hifi++_trainer
+    metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
 
 default_model:
     optimizer:
@@ -51,6 +55,7 @@ default_model:
         name: exponential
         args:
             gamma: 0.999
+            reduce_time: "epoch"
 
 models:
     a2a_hifi++_gen:
@@ -59,13 +64,13 @@ models:
         args: {}
         losses:
             l1_mel_loss: 45
-            hifigan_gen_loss: 1
+            gen_loss: 1
             feature_loss: 2   
     
-    hifigan_msd:
+    msd:
         inherit: default_model
         checkpoint_path: null
         args:
             same_scale: true
         losses:
-            hifigan_disc_loss: 1 
+            disc_loss: 1 

@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train/Test split for dataset")
     parser.add_argument('--dataset_dir', type=str, required=True, help="Path to the dataset directory")
     parser.add_argument('--output_dir', type=str, required=True, help="Directory to save train and val file lists")
-    parser.add_argument('--val_size', type=float, default=0.05, help="Proportion of data to be used for training (default: 0.8)")
+    parser.add_argument('--val_size', type=float, default=0.1, help="Proportion of data to be used for training (default: 0.8)")
     
     args = parser.parse_args()
     
