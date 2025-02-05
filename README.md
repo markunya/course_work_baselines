@@ -9,7 +9,7 @@
 
 Процесс обучения и логи: https://wandb.ai/bondarenko_mark-higher-school-of-economics/hifigan
 
-Чекпоинты: 
+Чекпоинты: https://disk.yandex.ru/d/Ya2TL8CQVCYauw
 
 #### HiFi++
 Ссылка на оригинальную статью: https://arxiv.org/abs/2203.13086
@@ -18,7 +18,7 @@
 
 Процесс обучения и логи: https://wandb.ai/bondarenko_mark-higher-school-of-economics/hifi++
 
-Чекпоинты:
+Чекпоинты: https://disk.yandex.ru/d/LfLUinu2Astg5g
 
 #### Finally
 Ссылка на оригинальную статью: https://arxiv.org/abs/2410.05920
