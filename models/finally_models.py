@@ -4,13 +4,12 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.model_utils import NormConv2d, get_2d_padding
-from torch.nn.utils.parametrizations import weight_norm, spectral_norm
-from utils.data_utils import mel_spectrogram
-from librosa.filters import mel as librosa_mel_fn
-from .models import models_registry, LRELU_SLOPE, ResBlock1, ResBlock2
+from models import models_registry, LRELU_SLOPE
+from models.hifigan_models import ResBlock1, ResBlock2
 import typing as tp
 from typing import Literal
-from .hifipp_models import build_block, MultiScaleResnet, A2AHiFiPlusGeneratorV2
+from models.hifipp_models import MultiScaleResnet, A2AHiFiPlusGeneratorV2
+from utils.model_utils import init_weights
 import einops
 
 FeatureMapType = tp.List[torch.Tensor]
@@ -37,7 +36,7 @@ class DiscriminatorSTFT(nn.Module):
     """
     def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
                  n_fft: int = 1024, hop_length: int = 256, win_length: int = 1024, max_filters: int = 1024,
-                 filters_scale: int = 1, kernel_size: tp.Tuple[int, int] = (3, 9), dilations: tp.List = [1, 2, 4],
+                 filters_scale: int = 1, kernel_size: tp.Tuple[int, int] = (3, 9), dilations: tp.Tuple = (1, 2, 4),
                  stride: tp.Tuple[int, int] = (1, 2), normalized: bool = True, norm: str = 'weight_norm',
                  activation: str = 'LeakyReLU', activation_params: dict = {'negative_slope': 0.2}):
         super().__init__()
@@ -100,8 +99,8 @@ class MultiScaleSTFTDiscriminator(nn.Module):
         **kwargs: additional args for STFTDiscriminator
     """
     def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
-                 n_ffts: tp.List[int] = [1024, 2048, 512], hop_lengths: tp.List[int] = [256, 512, 128],
-                 win_lengths: tp.List[int] = [1024, 2048, 512], **kwargs):
+                 n_ffts: tp.Tuple[int] = (1024, 2048, 512), hop_lengths: tp.Tuple[int] = (256, 512, 128),
+                 win_lengths: tp.Tuple[int] = (1024, 2048, 512), **kwargs):
         super().__init__()
         assert len(n_ffts) == len(hop_lengths) == len(win_lengths)
         self.discriminators = nn.ModuleList([
@@ -124,32 +123,34 @@ class MultiScaleSTFTDiscriminator(nn.Module):
 class FinallyGenerator(A2AHiFiPlusGeneratorV2):
     def __init__(
         self,
-        hifi_resblock="1",
-        hifi_upsample_rates=(8, 8, 2, 2),
-        hifi_upsample_kernel_sizes=(16, 16, 4, 4),
-        hifi_upsample_initial_channel=128,
-        hifi_resblock_kernel_sizes=(3, 7, 11),
-        hifi_resblock_dilation_sizes=((1, 3, 5), (1, 3, 5), (1, 3, 5)),
-        hifi_input_channels=128,
-        hifi_conv_pre_kernel_size=1,
+        hifi_resblock="1", # good
+        hifi_upsample_rates=(8, 8, 2, 2), # good
+        hifi_upsample_kernel_sizes=(16, 16, 4, 4), # good
+        hifi_upsample_initial_channel=512, # good? now v1, was 128 as in v2
+        hifi_resblock_kernel_sizes=(3, 7, 11), # good
+        hifi_resblock_dilation_sizes=((1, 3, 5), (1, 3, 5), (1, 3, 5)), # good
+        hifi_input_channels=512, # was 128
+        hifi_conv_pre_kernel_size=1, # good
 
-        use_spectralunet=True,
-        spectralunet_block_widths=(8, 16, 24, 32, 64),
-        spectralunet_block_depth=5,
-        spectralunet_positional_encoding=True,
+        use_spectralunet=True, # good
+        spectralunet_block_widths=(16, 32, 64, 128, 256), # was (8, 16, 24, 32, 64),
+        spectralunet_block_depth=4, # was 5
+        spectralunet_positional_encoding=True, # good
+        spectralunet_out_channels=512, # good
 
-        use_waveunet=True,
-        waveunet_block_widths=(10, 20, 40, 80),
-        waveunet_block_depth=4,
+        use_waveunet=True, # good
+        waveunet_block_widths=(64, 128, 256, 512), # omg was (10, 20, 40, 80), 
+        waveunet_block_depth=4, # good
 
-        use_spectralmasknet=True,
-        spectralmasknet_block_widths=(8, 12, 24, 32),
-        spectralmasknet_block_depth=4,
+        use_spectralmasknet=True, # good
+        spectralmasknet_block_widths=(64, 128, 256, 512), # wtf was (8, 12, 24, 32),
+        spectralmasknet_block_depth=1, # was 4
 
-        use_upsamplewaveunet=False,
-        upsamplewaveunet_upsample_factor=3,
-        upsamplewaveunet_block_widths=(10, 20, 40, 80),
-        upsamplewaveunet_block_depth=4,
+        use_upsamplewaveunet=False, # by default
+        upsamplewaveunet_block_widths=(128,128,128,128,256), # as in paper
+        upsamplewaveunet_block_depth=3, # as in paper
+        upsamplewaveunet_upsample_factor=3, # from 16 to 48
+        upsamplewaveunet_upsampler_features=512, # as in paper
 
         norm_type: Literal["weight", "spectral"] = "weight",
         use_skip_connect=True,
@@ -170,6 +171,7 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
             spectralunet_block_widths=spectralunet_block_widths,
             spectralunet_block_depth=spectralunet_block_depth,
             spectralunet_positional_encoding=spectralunet_positional_encoding,
+            spectralunet_out_channels=spectralunet_out_channels,
 
             use_waveunet=use_waveunet,
             waveunet_block_widths=waveunet_block_widths,
@@ -182,60 +184,66 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
             norm_type=norm_type,
             use_skip_connect=use_skip_connect,
             waveunet_before_spectralmasknet=True,
+
+            waveunet_input=waveunet_input
         )
+        self.resblock_type = ResBlock1 if hifi_resblock == '1' else ResBlock2
+        self.pre_upsampler_proccessing = nn.Sequential(
+            self.resblock_type(spectralunet_out_channels + 1024),
+            nn.LeakyReLU(LRELU_SLOPE),
+            self.norm(nn.Conv1d(spectralunet_out_channels + 1024, hifi_input_channels, 1))
+        )
+        init_weights(self.pre_upsampler_proccessing)
 
-        self.waveunet_input = waveunet_input
-
-        self.waveunet_conv_pre = None
-        if self.waveunet_input == "waveform":
-            self.waveunet_conv_pre = weight_norm(
-                nn.Conv1d(
-                    1, self.hifi.out_channels, 1
-                )
-            )
-        elif self.waveunet_input == "both":
-            self.waveunet_conv_pre = weight_norm(
-                nn.Conv1d(
-                    1 + self.hifi.out_channels, self.hifi.out_channels, 1
-                )
-            )
-        
-        self.upsamplewaveunet_upsample_factor = upsamplewaveunet_upsample_factor
         self.upsamplewaveunet_block_widths = upsamplewaveunet_block_widths
         self.upsamplewaveunet_block_depth = upsamplewaveunet_block_depth
+        self.upsamplewaveunet_upsampler_features = upsamplewaveunet_upsampler_features
+        self.upsamplewaveunet_upsample_factor = upsamplewaveunet_upsample_factor
         self.upsamplewaveunet = None
-        self.include_upsamplewaveunet(use_upsamplewaveunet)
+        self.set_use_upsamplewaveunet(use_upsamplewaveunet)
 
         bundle = torchaudio.pipelines.WAVLM_LARGE
         self.wavlm = bundle.get_model()
+        self.wavlm.eval()
+        for param in self.wavlm.parameters():
+            param.requires_grad_(False)
+
+    def set_use_upsamplewaveunet(self, use):
+        self.use_upsamplewaveunet = use
+        if self.use_upsamplewaveunet and self.upsamplewaveunet is None:
+            waveunet = MultiScaleResnet(
+                self.upsamplewaveunet_block_widths,
+                self.upsamplewaveunet_block_depth,
+                mode="waveunet_k5",
+                in_width=self.hifi.out_channels,
+                out_width=self.upsamplewaveunet_upsampler_features,
+                norm_type=self.norm_type
+            )
+            upsample_block = nn.Sequential(
+                self.norm(
+                    nn.ConvTranspose1d(
+                        waveunet.out_dims, 1, 
+                        kernel_size=self.upsamplewaveunet_upsample_factor,
+                        stride=self.upsamplewaveunet_upsample_factor
+                    )
+                ),
+            )
+
+            self.upsamplewaveunet = nn.Sequential(
+                waveunet,
+                nn.LeakyReLU(LRELU_SLOPE),
+                upsample_block
+            )
+
+            init_weights(self.upsamplewaveunet)
+
 
     @torch.no_grad()
     def apply_wavlm(self, wav):
+        if len(wav.shape) == 3:
+            wav = wav.squeeze(1)
         features, _ = self.wavlm.extract_features(wav)
         return features[-1]
-
-    def include_upsamplewaveunet(self, include):
-        self.use_upsamplewaveunet = include
-        if include and self.upsamplewaveunet is None:
-            self.upsamplewaveunet = nn.Sequential(
-                MultiScaleResnet(
-                    self.upsamplewaveunet_block_widths,
-                    self.upsamplewaveunet_block_depth,
-                    mode="waveunet_k5",
-                    out_width=self.hifi.out_channels,
-                    in_width=self.hifi.out_channels,
-                    norm_type=self.norm_type
-                ),
-                self.norm_type(nn.ConvTranspose1d(
-                    self.hifi.out_channels,
-                    self.hifi.out_channels,
-                    kernel_size=self.upsamplewaveunet_upsample_factor,
-                    stride=self.upsamplewaveunet_upsample_factor)),
-                build_block(self.hifi.out_channels,
-                            self.upsamplewaveunet_block_depth,
-                            "waveunet_k5",
-                            self.norm_type)
-            )
 
     def forward(self, x):
         x_orig = x.clone()
@@ -243,17 +251,34 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
 
         x = self.get_melspec(x_orig)
         x = self.apply_spectralunet(x)
-        wavlm_features = self.apply_waveunet(x_orig)
+        assert x.shape[1] == 512
 
-        x = self.hifi(torch.cat([wavlm_features, x], 1))
+        wavlm_features = self.apply_wavlm(x_orig)
+        wavlm_features = wavlm_features.permute(0, 2, 1)
+        assert wavlm_features.shape[1] == 1024
+
+        wavlm_features_interpolated = torch.nn.functional.interpolate(
+            wavlm_features, size=x.shape[2], mode='nearest'
+        )
+        x = torch.cat([wavlm_features_interpolated, x], 1)
+        assert x.shape[1] == 1536
+
+        x = self.pre_upsampler_proccessing(x)
+        x = self.hifi(x)
+
         if self.use_waveunet:
             x = self.apply_waveunet_a2a(x, x_orig)
+        
+        assert x.shape[1] == 32
+
         if self.use_spectralmasknet:
             x = self.apply_spectralmasknet(x)
+
         if self.use_upsamplewaveunet:
             x = self.upsamplewaveunet(x)
-
-        x = self.conv_post(x)
+        else:
+            x = self.conv_post(x)
+            
         x = torch.tanh(x)
 
         return x

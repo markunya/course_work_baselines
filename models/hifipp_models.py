@@ -7,7 +7,8 @@ from utils.model_utils import closest_power_of_two, init_weights
 from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from utils.data_utils import mel_spectrogram
 from librosa.filters import mel as librosa_mel_fn
-from .models import models_registry, LRELU_SLOPE, ResBlock1, ResBlock2
+from models.models import models_registry, LRELU_SLOPE
+from models.hifigan_models import ResBlock1, ResBlock2
 from typing import Literal
 
 class AddSkipConn(nn.Module):
@@ -329,6 +330,7 @@ class SpectralUNet(nn.Module):
             block_widths=(8, 16, 24, 32, 64),
             block_depth=5,
             positional_encoding=True,
+            out_channels=128,
             norm_type: Literal["weight", "spectral"] = "weight",
     ):
         super().__init__()
@@ -359,7 +361,7 @@ class SpectralUNet(nn.Module):
         )
 
         self.post_conv_1d = nn.Sequential(
-            norm(nn.Conv1d(513, 128, 1, 1, padding=0)),
+            norm(nn.Conv1d(513, out_channels, 1, 1, padding=0)),
         )
 
         self.mel2lin = None
@@ -505,6 +507,7 @@ class HiFiPlusGenerator(torch.nn.Module):
         spectralunet_block_widths=(8, 16, 24, 32, 64),
         spectralunet_block_depth=5,
         spectralunet_positional_encoding=True,
+        spectralunet_out_channels=128,
 
         use_waveunet=True,
         waveunet_block_widths=(10, 20, 40, 80),
@@ -548,6 +551,7 @@ class HiFiPlusGenerator(torch.nn.Module):
                 block_depth=spectralunet_block_depth,
                 positional_encoding=spectralunet_positional_encoding,
                 norm_type=norm_type,
+                out_channels=spectralunet_out_channels,
             )
 
         if self.use_waveunet:
@@ -650,6 +654,7 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
         spectralunet_block_widths=(8, 16, 24, 32, 64),
         spectralunet_block_depth=5,
         spectralunet_positional_encoding=True,
+        spectralunet_out_channels=128,
 
         use_waveunet=True,
         waveunet_block_widths=(10, 20, 40, 80),
@@ -679,6 +684,7 @@ class A2AHiFiPlusGeneratorV2(HiFiPlusGenerator):
             spectralunet_block_widths=spectralunet_block_widths,
             spectralunet_block_depth=spectralunet_block_depth,
             spectralunet_positional_encoding=spectralunet_positional_encoding,
+            spectralunet_out_channels=spectralunet_out_channels,
 
             use_waveunet=use_waveunet,
             waveunet_block_widths=waveunet_block_widths,

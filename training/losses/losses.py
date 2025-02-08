@@ -45,15 +45,17 @@ class LMOSLoss(nn.Module):
         self.fft_size = fft_size
         self.hop_length = hop_length
 
-        bundle = torchaudio.pipelines.WAVLM_LARGE
-        self.wavlm = bundle.get_model()
         self.extraction_layer = extraction_layer
         self.stft = T.Spectrogram(n_fft=fft_size, hop_length=hop_length, power=1)
 
-    def forward(self, real_wav, gen_wav):
-        with torch.no_grad():
-            real_features = self.wavlm.extract_features(real_wav)[self.extraction_layer]
-            gen_features = self.wavlm.extract_features(gen_wav)[self.extraction_layer]
+    def forward(self, real_wav, gen_wav, wavlm):
+        # it should be guaranteed that wavlm weights not require grad
+        if len(real_wav.shape) == 3:
+            real_wav = real_wav.squeeze(1)
+        if len(gen_wav.shape) == 3:
+            gen_wav = gen_wav.squeeze(1)        
+        real_features = wavlm.extract_features(real_wav)[0][self.extraction_layer]
+        gen_features = wavlm.extract_features(gen_wav)[0][self.extraction_layer]
 
         feature_loss = torch.norm(real_features - gen_features, p=2, dim=-1).mean()
 

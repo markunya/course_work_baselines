@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils.class_registry import ClassRegistry
 
-from models.hifigan_models import models_registry
+from models import models_registry
 from training.optimizers import optimizers_registry
 from training.schedulers import schedulers_registry
 from datasets.datasets import datasets_registry
@@ -76,8 +76,8 @@ class BaseTrainer:
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
             print(f'Loading checkpoint for {model_name} from {checkpoint_path}...')
-            checkpoint = torch.load(checkpoint_path, map_location=self.device)
-            model.load_state_dict(checkpoint['state_dict'])
+            checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+            model.load_state_dict(checkpoint['state_dict'], strict=False)
         else:
             if checkpoint_path:
                 print(f'Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.')
@@ -124,7 +124,7 @@ class BaseTrainer:
     def setup_losses(self):
         self.loss_builders = {}
         for model_name, model_config in self.config.models.items():
-            self.loss_builders[model_name] = LossBuilder(model_config)
+            self.loss_builders[model_name] = LossBuilder(self.device, model_config)
         tqdm.write(f'Loss functions successfully initialized')
 
     def setup_val_metrics(self):
@@ -159,6 +159,7 @@ class BaseTrainer:
                 self.config.data.val_data_file_path,
                 self.config.mel,
                 split=False,
+                eval=True,
                 **self.config.data.dataset_args
         )
         tqdm.write('Datasets for train and validation successfully initialized')

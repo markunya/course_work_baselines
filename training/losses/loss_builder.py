@@ -4,16 +4,17 @@ from utils.class_registry import ClassRegistry
 losses_registry = ClassRegistry()
 
 class LossBuilder:
-    def __init__(self, config):
+    def __init__(self, device, config):
         self.losses = {}
         self.coefs = {}
-
+        self.device = device
+        
         for loss_name, loss_coef in config['losses'].items():
             self.coefs[loss_name] = loss_coef
             loss_args = {}
             if 'losses_args' in config and loss_name in config['losses_args']:
                 loss_args = config['losses_args']['loss_name']
-            self.losses[loss_name] = losses_registry[loss_name](**loss_args)
+            self.losses[loss_name] = losses_registry[loss_name](**loss_args).to(self.device)
 
     def calculate_loss(self, info, tl_suffix=None):
         loss_dict = {}

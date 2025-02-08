@@ -4,14 +4,16 @@ import numpy as np
 import os
 import librosa
 import math
+import torchaudio
 
 from torch.utils.data import Dataset
 from librosa.util import normalize
 
 from utils.class_registry import ClassRegistry
-from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file_list, split_audios,debug_msg
+from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file_list, split_audios
 from utils.data_utils import low_pass_filter
 from utils.model_utils import closest_power_of_two
+from datasets.augmentations import augmentations_registry
 
 datasets_registry = ClassRegistry()
 
@@ -19,7 +21,7 @@ WAV_AFTERNORM_COEF = 0.95
 
 @datasets_registry.add_to_registry(name='mel_dataset')
 class MelDataset(Dataset):
-    def __init__(self, root, files_list_path, mel_conf, fine_tuning=False, split=True):
+    def __init__(self, root, files_list_path, mel_conf, fine_tuning=False, split=True, eval=False):
         self.root = root
         self.files_list = read_file_list(files_list_path)
         self.fine_tuning = fine_tuning
@@ -164,7 +166,7 @@ class VCTKDataset(Dataset):
         return len(self.files_list)
 
 @datasets_registry.add_to_registry(name='voicebank')
-class VoicebankDataset(torch.utils.data.Dataset):
+class VoicebankDataset(Dataset):
     def __init__(
         self,
         root,
@@ -173,6 +175,7 @@ class VoicebankDataset(torch.utils.data.Dataset):
         noisy_wavs_dir,
         clean_wavs_dir,
         split=True,
+        eval=False,
         input_freq=None,
     ):
         if clean_wavs_dir:
@@ -220,6 +223,113 @@ class VoicebankDataset(torch.utils.data.Dataset):
                 'wav': wav.squeeze(),
                 'name': fn
             }
+
+    def __len__(self):
+        return len(self.files_list)
+
+@datasets_registry.add_to_registry(name='augmented_libritts-r')
+class AugmentedLibriTTSR(Dataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        seed=42,
+        eval=False,
+        split=True,
+        lowpass='random',
+        augs_conf=tuple()
+    ):
+        self.root = root
+        self.files_list = read_file_list(files_list_path)
+        self.segment_size = mel_conf.segment_size
+        self.sampling_rate = mel_conf.sampling_rate
+        self.split = split
+        self.eval = eval
+        self.seed = seed
+        self.lowpass = lowpass
+        self.augmentations = self._get_augs_from_conf(augs_conf)
+
+    def _get_augs_from_conf(self, augs_conf):
+        augs = []
+        if not augs_conf:
+            return augs
+
+        for aug in augs_conf:
+            name = aug['name']
+            args = aug['args'].copy()
+
+            if name == 'noise':
+                args['noise_files_path'] = args['noise_files_path']['val'] \
+                                            if self.eval else args['noise_files_path']['train']
+            elif name == 'impulse_response':
+                args['ir_files_path'] = args['ir_files_path']['val'] \
+                                            if self.eval else args['ir_files_path']['train']
+
+            try:
+                augs.append(augmentations_registry[name](sr=self.sampling_rate, **args))
+            except Exception as e:
+                print(f"Failed to initiallize {name}: {e}")
+
+        return augs
+
+    def _apply_augs(self, wav, index):
+        result = wav.clone()
+        seed = self.seed + index if self.eval else None
+
+        for aug in self.augmentations:
+            try:
+                result = aug(result, seed)
+            except Exception as e:
+                print(f"Failed to apply {aug.__class__.__name__}: {e}")
+
+        return result
+
+    def _safe_normalize(self, wav):
+        if not np.all(np.isfinite(wav)):
+            print("Warning: NaNs or infs detected. Replaced with 0.")
+            wav = np.nan_to_num(wav)
+
+        max_val = np.max(np.abs(wav))
+        if max_val > 0:
+            return wav / max_val
+        return wav
+
+    def __getitem__(self, index):
+        filename = self.files_list[index]
+
+        wav, sr = torchaudio.load(os.path.join(self.root, filename))
+
+        if sr != self.sampling_rate:
+            wav = low_pass_filter(
+                wav.numpy(), self.input_freq,
+                lp_type=self.lowpass, orig_sr=self.sampling_rate
+            )
+        else:
+            wav = wav.numpy().squeeze(0)
+
+        (wav,) = split_audios([wav], self.segment_size, self.split)
+
+        augmented = self._apply_augs(torch.from_numpy(wav[None]), index).squeeze()
+
+        input_wav = self._safe_normalize(augmented.numpy())[None] * WAV_AFTERNORM_COEF
+        target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
+
+        input_wav = torch.from_numpy(input_wav)
+        target_wav = torch.from_numpy(target_wav)
+
+        input_wav = input_wav[:,:target_wav.shape[-1]]
+        pad_size = closest_power_of_two(target_wav.shape[-1]) - target_wav.shape[-1]
+
+        input_wav = torch.nn.functional.pad(input_wav, (0, pad_size)).squeeze()
+        target_wav = torch.nn.functional.pad(target_wav, (0, pad_size)).squeeze()
+
+        assert input_wav.shape == target_wav.shape
+        return {
+            'input_wav': input_wav,
+            'wav': target_wav,
+            'name': filename
+        }
 
     def __len__(self):
         return len(self.files_list)
