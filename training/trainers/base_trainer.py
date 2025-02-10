@@ -276,11 +276,16 @@ class BaseTrainer:
     def _compute_metrics(self, batch, gen_batch, metrics_dict, action):
         for metric_name, metric in self.metrics:
             value = metric(batch, gen_batch)
+            metrics_dict[f'{action}_{metric_name}'] = []
             if isinstance(value, (np.ndarray, list)) and len(value) == 1:
                 value = value.item() if isinstance(value, np.ndarray) else value[0]
             elif isinstance(value, torch.Tensor):
                 value = value.item()
-            metrics_dict[f'{action}_{metric_name}'] = float(value)
+            metrics_dict[f'{action}_{metric_name}'].append(float(value))
+    
+    def _avg_computed_metrics(self, metrics_dict):
+        for metric_name, _ in self.metrics: 
+            metrics_dict[metric_name] = np.mean(metrics_dict[metric_name])
 
     def _log_synthesized_batch(self, iterator):
         for _ in range(self.config.exp.log_batch_size):
@@ -296,6 +301,7 @@ class BaseTrainer:
         for batch in self.val_dataloader:
             gen_batch = self.synthesize_wavs(batch)
             self._compute_metrics(batch, gen_batch, metrics_dict, action='val')
+            self._avg_computed_metrics(self, metrics_dict)
 
         self.logger.log_metrics(metrics_dict, self.step)
         self._log_synthesized_batch(iter(self.val_dataloader))
@@ -323,6 +329,7 @@ class BaseTrainer:
                                 os.path.join(run_inf_dir, 'generated'), sr)
 
                 self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
+                self._avg_computed_metrics(metrics_dict)
 
                 progress.update(1)
 
