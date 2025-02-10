@@ -225,10 +225,10 @@ class BaseTrainer:
                 scheduler.step()
 
     def training_loop(self):
-        self.to_train()
-
         with tqdm(total=self.config.train.steps, desc='Training Progress', unit='step') as progress:
             for self.step in range(self.start_step, self.config.train.steps + 1):
+                self.to_train()
+                
                 losses_dict = self.train_step()
                 self.step_schedulers()
 

@@ -204,7 +204,6 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
 
         bundle = torchaudio.pipelines.WAVLM_LARGE
         self.wavlm = bundle.get_model()
-        self.wavlm.eval()
         for param in self.wavlm.parameters():
             param.requires_grad_(False)
 
@@ -240,6 +239,7 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
 
     @torch.no_grad()
     def apply_wavlm(self, wav):
+        self.wavlm.eval()
         if len(wav.shape) == 3:
             wav = wav.squeeze(1)
         features, _ = self.wavlm.extract_features(wav)

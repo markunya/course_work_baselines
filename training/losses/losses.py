@@ -50,6 +50,7 @@ class LMOSLoss(nn.Module):
 
     def forward(self, real_wav, gen_wav, wavlm):
         # it should be guaranteed that wavlm weights not require grad
+        wavlm.eval()
         if len(real_wav.shape) == 3:
             real_wav = real_wav.squeeze(1)
         if len(gen_wav.shape) == 3:
