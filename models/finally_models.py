@@ -52,7 +52,8 @@ class DiscriminatorSTFT(nn.Module):
         self.activation = getattr(torch.nn, activation)(**activation_params)
         self.spec_transform = torchaudio.transforms.Spectrogram(
             n_fft=self.n_fft, hop_length=self.hop_length, win_length=self.win_length, window_fn=torch.hann_window,
-            normalized=self.normalized, center=False, pad_mode=None, power=None)
+            normalized=self.normalized, center=False, pad_mode=None, power=None
+        )
         spec_channels = 2 * self.in_channels
         self.convs = nn.ModuleList()
         self.convs.append(
@@ -62,8 +63,8 @@ class DiscriminatorSTFT(nn.Module):
         for i, dilation in enumerate(dilations):
             out_chs = min((filters_scale ** (i + 1)) * self.filters, max_filters)
             self.convs.append(NormConv2d(in_chs, out_chs, kernel_size=kernel_size, stride=stride,
-                                         dilation=(dilation, 1), padding=get_2d_padding(kernel_size, (dilation, 1)),
-                                         norm=norm))
+                                        dilation=(dilation, 1), padding=get_2d_padding(kernel_size, (dilation, 1)),
+                                        norm=norm))
             in_chs = out_chs
         out_chs = min((filters_scale ** (len(dilations) + 1)) * self.filters, max_filters)
         self.convs.append(NormConv2d(in_chs, out_chs, kernel_size=(kernel_size[0], kernel_size[0]),
@@ -78,7 +79,7 @@ class DiscriminatorSTFT(nn.Module):
         fmap = []
         z = self.spec_transform(x)  # [B, 2, Freq, Frames, 2]
         z = torch.cat([z.real, z.imag], dim=1)
-        z = einops.eioprearrange(z, 'b c w t -> b c t w')
+        z = einops.rearrange(z, 'b c w t -> b c t w')
         for i, layer in enumerate(self.convs):
             z = layer(z)
             z = self.activation(z)
@@ -98,9 +99,17 @@ class MultiScaleSTFTDiscriminator(nn.Module):
         win_lengths (Sequence[int]): Window size for each scale
         **kwargs: additional args for STFTDiscriminator
     """
-    def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
-                 n_ffts: tp.Tuple[int] = (1024, 2048, 512), hop_lengths: tp.Tuple[int] = (256, 512, 128),
-                 win_lengths: tp.Tuple[int] = (1024, 2048, 512), **kwargs):
+    def __init__(
+        self,
+        filters: int,
+        in_channels: int = 1,
+        out_channels: int = 1,
+        n_ffts: tp.Tuple[int] = (4096, 2048, 1024, 512, 256),
+        hop_lengths: tp.Tuple[int] = (1024, 512, 256, 128, 64),
+        win_lengths: tp.Tuple[int] = (4096, 2048, 1024, 512, 256),
+        **kwargs
+    ): # defaults for 48kHz
+
         super().__init__()
         assert len(n_ffts) == len(hop_lengths) == len(win_lengths)
         self.discriminators = nn.ModuleList([

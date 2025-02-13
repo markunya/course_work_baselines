@@ -286,14 +286,9 @@ class AugmentedLibriTTSR(Dataset):
         return result
 
     def _safe_normalize(self, wav):
-        if not np.all(np.isfinite(wav)):
-            print("Warning: NaNs or infs detected. Replaced with 0.")
-            wav = np.nan_to_num(wav)
-
-        max_val = np.max(np.abs(wav))
-        if max_val > 0:
-            return wav / max_val
-        return wav
+        wav = torch.nan_to_num(wav)
+        max_val = torch.max(torch.abs(wav))
+        return wav / max_val if max_val > 0 else wav
 
     def __getitem__(self, index):
         filename = self.files_list[index]
@@ -312,11 +307,8 @@ class AugmentedLibriTTSR(Dataset):
 
         augmented = self._apply_augs(torch.from_numpy(wav[None]), index).squeeze()
 
-        input_wav = self._safe_normalize(augmented.numpy())[None] * WAV_AFTERNORM_COEF
-        target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
-
-        input_wav = torch.from_numpy(input_wav)
-        target_wav = torch.from_numpy(target_wav)
+        input_wav = self._safe_normalize(augmented)[None] * WAV_AFTERNORM_COEF
+        target_wav = self._safe_normalize(torch.from_numpy(wav)) * WAV_AFTERNORM_COEF
 
         input_wav = input_wav[:,:target_wav.shape[-1]]
         pad_size = closest_power_of_two(target_wav.shape[-1]) - target_wav.shape[-1]

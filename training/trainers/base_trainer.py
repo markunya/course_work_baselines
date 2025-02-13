@@ -1,6 +1,7 @@
 import os
 import torch
 import numpy as np
+import torch.nn as nn
 
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
@@ -26,6 +27,7 @@ class BaseTrainer:
         self.device = config.exp.device
         self.start_step = config.train.start_step
         self.step = self.start_step
+        self.multi_gpu = False
 
     def setup_training(self):
         self.setup_experiment_dir()
@@ -71,8 +73,17 @@ class BaseTrainer:
 
     def _create_model(self, model_name, model_config):
         model_class = models_registry[model_name]
-        model = model_class(**model_config['args']).to(self.device)
+        model = model_class(**model_config['args'])
 
+        n_gpus = torch.cuda.device_count()
+        if n_gpus > 1:
+            if not self.multi_gpu:
+                tqdm.write(f'Will be used {n_gpus} GPUs')
+            self.multi_gpu = True
+            
+            model = nn.DataParallel(model)
+        model = model.to(self.device)
+        
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
             print(f'Loading checkpoint for {model_name} from {checkpoint_path}...')

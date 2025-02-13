@@ -35,14 +35,16 @@ class RandomNoise:
         self.root = root
         self.sr = sr
         self.noise_filenames = read_file_list(noise_files_path)
+        self.resampler_cache = {}
 
     def _load_noise(self, target_length, target_sr, rnd):
         noise_path = os.path.join(self.root, rnd.choice(self.noise_filenames))
         noise_waveform, noise_sr = torchaudio.load(noise_path)
 
         if noise_sr != target_sr:
-            resampler = Resample(orig_freq=noise_sr, new_freq=target_sr)
-            noise_waveform = resampler(noise_waveform)
+            if noise_sr not in self.resampler_cache:
+                self.resampler_cache[noise_sr] = Resample(noise_sr, target_sr)
+            noise_waveform = self.resampler_cache[noise_sr](noise_waveform)
 
         noise_waveform = noise_waveform[:, :target_length]
         if noise_waveform.shape[1] < target_length:
@@ -68,14 +70,16 @@ class RandomImpulseResponse:
         self.root = root
         self.ir_filenames = read_file_list(ir_files_path)
         self.sr = sr
+        self.resampler_cache = {}
 
     def _load_ir(self, target_sr, rnd):
         ir_path = os.path.join(self.root, rnd.choice(self.ir_filenames))
         ir_waveform, sr_ir = torchaudio.load(ir_path)
 
         if sr_ir != target_sr:
-            resampler = Resample(orig_freq=sr_ir, new_freq=target_sr)
-            ir_waveform = resampler(ir_waveform)
+            if sr_ir not in self.resampler_cache:
+                self.resampler_cache[sr_ir] = Resample(sr_ir, target_sr)
+            ir_waveform = self.resampler_cache[sr_ir](ir_waveform)
 
         ir_waveform = ir_waveform / torch.max(torch.abs(ir_waveform))
         return ir_waveform
@@ -89,9 +93,7 @@ class RandomImpulseResponse:
         if wav.dim() == 2:
             wav = wav.unsqueeze(0)
 
-        processed_wav = torch.from_numpy(
-            signal.fftconvolve(wav.numpy(), ir_waveform.numpy(), mode='full')
-        )
+        processed_wav = F.fftconvolve(wav, ir_waveform, mode='full')
 
         return processed_wav.squeeze(0)
 
@@ -102,14 +104,15 @@ class RandomAcrusher:
         self.prob = prob
         self.sr = sr
         self.bits_range = bits_range
+        self.effector_cache = {}
 
     @apply_with_prob
     def __call__(self, wav, seed=None):
         rnd = get_rnd(seed)
         bits = rnd.randint(*self.bits_range)
-        effector = AudioEffector(effect=f"acrusher=bits={bits}", pad_end=False)
-        return effector.apply(wav.T, self.sr).T.clamp(-1.0,1.0)
-
+        if bits not in self.effector_cache:
+            self.effector_cache[bits] = AudioEffector(effect=f"acrusher=bits={bits}", pad_end=False)
+        return self.effector_cache[bits].apply(wav.T, self.sr).T.clamp(-1.0,1.0)
     
 @augmentations_registry.add_to_registry(name='crystalizer')
 class RandomCrystalizer:
@@ -118,13 +121,15 @@ class RandomCrystalizer:
         self.prob = prob
         self.sr = sr
         self.intensity_range = intensity_range
+        self.effector_cache = {}
 
     @apply_with_prob
     def __call__(self, wav, seed=None):
         rnd = get_rnd(seed)
         intensity = rnd.randint(*self.intensity_range)
-        effector = AudioEffector(effect=f"crystalizer=i={intensity}", pad_end=False)
-        return effector.apply(wav.T, self.sr).T.clamp(-1.0,1.0)
+        if intensity not in self.effector_cache:
+            self.effector_cache[intensity] = AudioEffector(effect=f"crystalizer=i={intensity}", pad_end=False)
+        return self.effector_cache[intensity].apply(wav.T, self.sr).T.clamp(-1.0,1.0)
 
 @augmentations_registry.add_to_registry(name='flanger')
 class RandomFlanger:
@@ -133,13 +138,15 @@ class RandomFlanger:
         self.prob = prob
         self.sr = sr
         self.depth_range = depth_range
+        self.effector_cache = {}
 
     @apply_with_prob
     def __call__(self, wav, seed=None):
         rnd = get_rnd(seed)
         depth = rnd.randint(*self.depth_range)
-        effector = AudioEffector(effect=f"flanger=depth={depth}", pad_end=False)
-        return effector.apply(wav.T, self.sr).T.clamp(-1.0,1.0)
+        if depth not in self.effector_cache:
+            self.effector_cache[depth] = AudioEffector(effect=f"flanger=depth={depth}", pad_end=False)
+        return self.effector_cache[depth].apply(wav.T, self.sr).T.clamp(-1.0,1.0)
     
 @augmentations_registry.add_to_registry(name='vibrato')
 class RandomVibrato:
@@ -148,13 +155,15 @@ class RandomVibrato:
         self.prob = prob
         self.sr = sr
         self.freq_range = freq_range
+        self.effector_cache = {}
 
     @apply_with_prob
     def __call__(self, wav, seed=None):
         rnd = get_rnd(seed)
         freq = rnd.randint(*self.freq_range)
-        effector = AudioEffector(effect=f"vibrato=f={freq}", pad_end=False)
-        return effector.apply(wav.T, self.sr).T.clamp(-1.0,1.0)
+        if freq not in self.effector_cache:
+            self.effector_cache[freq] = AudioEffector(effect=f"vibrato=f={freq}", pad_end=False)
+        return self.effector_cache[freq].apply(wav.T, self.sr).T.clamp(-1.0,1.0)
 
 @augmentations_registry.add_to_registry(name='codec')
 class RandomCodec:
@@ -167,6 +176,7 @@ class RandomCodec:
         self.ogg_encoders = ogg_encoders
         self.mp3_bitrate_range = mp3_bitrate_range
         self.prob = prob
+        self.effector_cache = {}
 
     @apply_with_prob
     def __call__(self, wav, seed=None):
@@ -175,10 +185,20 @@ class RandomCodec:
         codec = rnd.choice(self.codec_types)
         if codec == 'mp3':
             bit_rate = rnd.randint(*self.mp3_bitrate_range)
-            effector = AudioEffector(format=codec, codec_config=CodecConfig(bit_rate=bit_rate))
+            if (codec, bit_rate) not in self.effector_cache:
+                self.effector_cache[(codec, bit_rate)] = AudioEffector(
+                    format=codec,
+                    codec_config=CodecConfig(bit_rate=bit_rate)
+                )
+            effector = self.effector_cache[(codec, bit_rate)]
         elif codec == 'ogg':
             encoder = rnd.choice(self.ogg_encoders)
-            effector = AudioEffector(format=codec, encoder=encoder)
+            if (codec, encoder) not in self.effector_cache:
+                self.effector_cache[(codec, encoder)] = AudioEffector(
+                    format=codec,
+                    encoder=encoder
+                )
+            effector = self.effector_cache[(codec, encoder)]
         else:
             raise ValueError(f'Invalid codec: {codec}')
 
