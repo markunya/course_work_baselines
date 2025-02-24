@@ -74,15 +74,6 @@ class BaseTrainer:
     def _create_model(self, model_name, model_config):
         model_class = models_registry[model_name]
         model = model_class(**model_config['args'])
-
-        n_gpus = torch.cuda.device_count()
-        if n_gpus > 1:
-            if not self.multi_gpu:
-                tqdm.write(f'Will be used {n_gpus} GPUs')
-            self.multi_gpu = True
-            
-            model = nn.DataParallel(model)
-        model = model.to(self.device)
         
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
@@ -94,6 +85,15 @@ class BaseTrainer:
                 print(f'Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.')
             else:
                 print(f'No checkpoint specified for {model_name}. Initializing from scratch.')
+
+        n_gpus = torch.cuda.device_count()
+        if n_gpus > 1:
+            if not self.multi_gpu:
+                tqdm.write(f'Will be used {n_gpus} GPUs')
+            self.multi_gpu = True
+            model = nn.DataParallel(model)
+
+        model = model.to(self.device)
 
         return model
     
@@ -283,20 +283,23 @@ class BaseTrainer:
                 tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:
                 tqdm.write(f'An error occured when saving checkpoint for {model_name} on step {self.step}: {e}')
-    
+
     def _compute_metrics(self, batch, gen_batch, metrics_dict, action):
         for metric_name, metric in self.metrics:
             value = metric(batch, gen_batch)
-            metrics_dict[f'{action}_{metric_name}'] = []
             if isinstance(value, (np.ndarray, list)) and len(value) == 1:
                 value = value.item() if isinstance(value, np.ndarray) else value[0]
             elif isinstance(value, torch.Tensor):
                 value = value.item()
-            metrics_dict[f'{action}_{metric_name}'].append(float(value))
+
+            key = f'{action}_{metric_name}'
+            if key not in metrics_dict:
+                metrics_dict[key] = []
+            metrics_dict[key].append(float(value))
     
-    def _avg_computed_metrics(self, metrics_dict):
+    def _avg_computed_metrics(self, metrics_dict, action):
         for metric_name, _ in self.metrics: 
-            metrics_dict[metric_name] = np.mean(metrics_dict[metric_name])
+            metrics_dict[f'{action}_{metric_name}'] = np.mean(metrics_dict[f'{action}_{metric_name}'])
 
     def _log_synthesized_batch(self, iterator):
         for _ in range(self.config.exp.log_batch_size):
@@ -312,7 +315,8 @@ class BaseTrainer:
         for batch in self.val_dataloader:
             gen_batch = self.synthesize_wavs(batch)
             self._compute_metrics(batch, gen_batch, metrics_dict, action='val')
-            self._avg_computed_metrics(self, metrics_dict)
+
+        self._avg_computed_metrics(metrics_dict, action='val')
 
         self.logger.log_metrics(metrics_dict, self.step)
         self._log_synthesized_batch(iter(self.val_dataloader))
@@ -340,9 +344,10 @@ class BaseTrainer:
                                 os.path.join(run_inf_dir, 'generated'), sr)
 
                 self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
-                self._avg_computed_metrics(metrics_dict)
 
                 progress.update(1)
+        
+        self._avg_computed_metrics(metrics_dict, action='inf')
 
         self.logger.log_metrics(metrics_dict, 0)
         self._log_synthesized_batch(iter(self.inference_dataloader))

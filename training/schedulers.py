@@ -6,10 +6,11 @@ from torch.optim.lr_scheduler import LambdaLR
 
 schedulers_registry = ClassRegistry()
 
+WarmUpCurve = Literal['linear', 'convex', 'concave']
 ReduceLrTime = Literal['epoch', 'step', 'period']
 
 class WarmUpScheduler(LambdaLR):
-    def __init__(self, optimizer, warmup_steps, base_scheduler, **kwargs):
+    def __init__(self, optimizer, warmup_steps, warmup_curve, base_scheduler, **kwargs):
         self.base_scheduler = base_scheduler
         self.warmup_steps = warmup_steps
         self.finished_warmup = False
@@ -17,9 +18,15 @@ class WarmUpScheduler(LambdaLR):
 
         def lr_lambda(current_step):
             if current_step <= warmup_steps:
-                if current_step == warmup_steps:
-                    self.finished_warmup = True
-                return current_step / warmup_steps
+                if warmup_curve == 'linear':
+                    return current_step / max(1, warmup_steps)
+                elif warmup_curve == 'convex':
+                    return (current_step / max(1, warmup_steps))**4
+                elif warmup_curve == 'concave':
+                    return (current_step / max(1, warmup_steps))**0.25
+            else:
+                self.finished_warmup = True
+                return 1.0
 
         super().__init__(optimizer, lr_lambda, **kwargs)
 
@@ -37,14 +44,14 @@ class WarmUpScheduler(LambdaLR):
     
 class BaseScheduler:
     def __init__(self, optimizer, base_scheduler_type,
-                reduce_time: ReduceLrTime, step_period=None, warmup_steps=0, **kwargs):
+                reduce_time: ReduceLrTime, step_period=None, warmup_steps=0, warmup_curve='linear', **kwargs):
         base_scheduler = base_scheduler_type(optimizer, **kwargs)
         self.reduce_time = reduce_time
         if reduce_time == 'period':
             self.period = step_period
 
         if warmup_steps > 0:
-            self.scheduler = WarmUpScheduler(optimizer, warmup_steps, base_scheduler)
+            self.scheduler = WarmUpScheduler(optimizer, warmup_steps, warmup_curve, base_scheduler)
         else:
             self.scheduler = base_scheduler
 
@@ -54,12 +61,15 @@ class BaseScheduler:
     def get_last_lr(self):
         return self.scheduler.get_last_lr()
 
-@schedulers_registry.add_to_registry(name='multi_step')
-class MultiStepScheduler(BaseScheduler):
-    def __init__(self, optimizer, reduce_time: ReduceLrTime, step_period=None, warmup_steps=0, **kwargs):
-        super().__init__(optimizer, MultiStepLR, reduce_time, step_period, warmup_steps, **kwargs)
-
 @schedulers_registry.add_to_registry(name='exponential')
 class ExponentialScheduler(BaseScheduler):
-    def __init__(self, optimizer, reduce_time: ReduceLrTime, step_period=None, warmup_steps=0, **kwargs):
-        super().__init__(optimizer, ExponentialLR, reduce_time, step_period, warmup_steps, **kwargs)
+    def __init__(
+            self,
+            optimizer,
+            reduce_time: ReduceLrTime,
+            step_period=None,
+            warmup_steps=0,
+            warmup_curve: WarmUpCurve='linear',
+            **kwargs
+        ):
+        super().__init__(optimizer, ExponentialLR, reduce_time, step_period, warmup_steps, warmup_curve, **kwargs)

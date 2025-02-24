@@ -80,20 +80,21 @@ class FinallyStage2Trainer(FinallyBaseTrainer):
         gen_wav = gen(input_wav)
 
         requires_grad(disc, True)
-        disc.zero_grad()
+        for _ in range(2):
+            disc_optimizer.zero_grad()
 
-        disc_real_out, _, = disc(real_wav)
-        disc_gen_out, _, = disc(gen_wav.detach())
+            disc_real_out, _, = disc(real_wav)
+            disc_gen_out, _, = disc(gen_wav.detach())
 
-        disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
-            '': dict(
-                discs_real_out=disc_real_out,
-                discs_gen_out=disc_gen_out
-            )
-        }, tl_suffix='ms-stft')
-        
-        disc_loss.backward()
-        disc_optimizer.step()
+            disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
+                '': dict(
+                    discs_real_out=disc_real_out,
+                    discs_gen_out=disc_gen_out
+                )
+            }, tl_suffix='ms-stft')
+            
+            disc_loss.backward()
+            disc_optimizer.step()
 
         requires_grad(disc, False)
         gen_optimizer.zero_grad()
