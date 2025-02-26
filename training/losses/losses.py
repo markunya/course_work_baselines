@@ -58,7 +58,7 @@ class LMOSLoss(nn.Module):
         real_features = wavlm.extract_features(real_wav)[0][self.extraction_layer]
         gen_features = wavlm.extract_features(gen_wav)[0][self.extraction_layer]
 
-        feature_loss = (torch.norm(real_features - gen_features, p=2, dim=-1)**2).mean()
+        feature_loss = torch.norm(real_features - gen_features, p=2, dim=-1).mean()
 
         real_stft = self.stft(real_wav)
         gen_stft = self.stft(gen_wav)
