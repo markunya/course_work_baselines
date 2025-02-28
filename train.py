@@ -1,7 +1,7 @@
 from omegaconf import OmegaConf
 from utils.model_utils import setup_seed
 from utils.data_utils import load_config
-from training.trainers.hifigan_trainer import gan_trainers_registry
+from training.trainers.base_trainer import gan_trainers_registry
 
 if __name__ == "__main__":
     config = load_config()
