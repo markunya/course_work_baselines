@@ -138,7 +138,7 @@ class BaseTrainer:
     def setup_losses(self):
         self.loss_builders = {}
         for model_name, model_config in self.config.models.items():
-            self.loss_builders[model_name] = LossBuilder(self.device, model_config)
+            self.loss_builders[model_name] = LossBuilder(self.device, model_config['losses'])
         tqdm.write(f'Loss functions successfully initialized')
 
     def setup_val_metrics(self):

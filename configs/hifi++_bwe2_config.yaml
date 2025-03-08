@@ -63,9 +63,12 @@ models:
         checkpoint_path: null
         args: {}
         losses:
-            l1_mel_loss: 45
-            gen_loss: 1
-            feature_loss: 2   
+            l1_mel_loss:
+                coef: 45.0
+            gen_loss:
+                coef: 1.0
+            feature_loss:
+                coef: 2.0   
     
     msd:
         inherit: default_model
@@ -73,4 +76,5 @@ models:
         args:
             same_scale: true
         losses:
-            disc_loss: 1 
+            disc_loss:
+                coef: 1.0

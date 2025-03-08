@@ -103,5 +103,6 @@ models:
         checkpoint_path: null
         args: {}
         losses:
-            lmos: 1.0   
+            lmos:
+              coef: 1.0
     

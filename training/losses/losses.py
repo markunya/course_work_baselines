@@ -3,6 +3,7 @@ import torchaudio
 import torchaudio.transforms as T
 from torch import nn
 from .loss_builder import losses_registry
+from torch_pesq import PesqLoss
 
 @losses_registry.add_to_registry(name='feature_loss')
 class FeatureLoss(nn.Module):
@@ -65,3 +66,11 @@ class LMOSLoss(nn.Module):
 
         lmos_loss = 100 * feature_loss + stft_loss
         return lmos_loss
+
+@losses_registry.add_to_registry('pesq')
+class PesqLoss_(PesqLoss):
+    def __init__(self, factor=0.5, sample_rate=48000):
+        super().__init__(factor=factor, sample_rate=sample_rate)
+
+    def forward(self, real_wav, gen_wav):
+        super().forward(real_wav, gen_wav)

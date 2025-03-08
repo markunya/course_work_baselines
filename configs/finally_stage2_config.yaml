@@ -105,9 +105,12 @@ models:
         args:
             wavlm_extraction_layer: -1
         losses:
-            lmos: 0.02
-            gen_loss: 0.4
-            feature_loss: 20.0 
+            lmos:
+              coef: 0.02
+            gen_loss:
+              coef: 0.4
+            feature_loss:
+              coef: 20.0
     
     ms-stft_disc:
       optimizer:
@@ -131,5 +134,6 @@ models:
           hop_lengths: [512, 256, 128, 64, 32]
           win_lengths: [2048, 1024, 512, 256, 128]
       losses:
-          disc_loss: 1.0   
+          disc_loss:
+            coef: 1.0
     

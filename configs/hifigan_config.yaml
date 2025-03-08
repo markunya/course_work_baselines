@@ -67,20 +67,25 @@ models:
             resblock_kernel_sizes: [3,7,11]
             resblock_dilation_sizes: [[1,3,5], [1,3,5], [1,3,5]]
         losses:
-            l1_mel_loss: 45
-            gen_loss: 1
-            feature_loss: 2
+            l1_mel_loss:
+                coef: 45.0
+            gen_loss:
+                coef: 1.0
+            feature_loss:
+                coef: 2.0
             
     mpd:
         inherit: default_model
         checkpoint_path: null
         args: {}
         losses:
-            disc_loss: 1        
+            disc_loss:
+                coef: 1.0       
     
     msd:
         inherit: default_model
         checkpoint_path: null
         args: {}
         losses:
-            disc_loss: 1 
+            disc_loss:
+                coef: 1.0
