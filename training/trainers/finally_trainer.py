@@ -1,4 +1,5 @@
 import torch
+import torchaudio
 from utils.data_utils import mel_spectrogram, debug_msg
 from utils.model_utils import requires_grad, closest_power_of_two
 from training.trainers.base_trainer import BaseTrainer
@@ -9,6 +10,11 @@ class FinallyBaseTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.gen_name = "finally_gen"
+
+        bundle = torchaudio.pipelines.WAVLM_LARGE
+        self.wavlm = bundle.get_model().to(config.exp.device)
+        self.wavlm.eval()
+        requires_grad(self.wavlm, False)
 
     def synthesize_wavs(self, batch):
         gen = self.models[self.gen_name]
@@ -21,7 +27,7 @@ class FinallyBaseTrainer(BaseTrainer):
 
         with torch.no_grad():
             for name, input_wav in zip(batch['name'], batch['input_wav']):
-                gen_wav = gen(input_wav.to(self.device)[None,None]).squeeze()
+                gen_wav = gen(input_wav.to(self.device)[None,None], self.wavlm).squeeze()
                 
                 result_dict['gen_wav'].append(gen_wav)
                 result_dict['name'].append(name)
@@ -43,14 +49,14 @@ class FinallyStage1Trainer(FinallyBaseTrainer):
         real_wav = batch['wav'].to(self.device).unsqueeze(1)
         input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
 
-        gen_wav = gen(input_wav)
+        gen_wav = gen(input_wav, self.wavlm)
         gen_optimizer.zero_grad()
 
         gen_loss, gen_losses_dict = gen_loss_builder.calculate_loss({
             '': dict(
                 gen_wav=gen_wav,
                 real_wav=real_wav,
-                wavlm=gen.module.wavlm if self.multi_gpu else gen.wavlm
+                wavlm=self.wavlm
             )
         }, tl_suffix='gen')
 
@@ -77,7 +83,7 @@ class FinallyStage2Trainer(FinallyBaseTrainer):
         real_wav = batch['wav'].to(self.device).unsqueeze(1)
         input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
 
-        gen_wav = gen(input_wav)
+        gen_wav = gen(input_wav, self.wavlm)
 
         requires_grad(disc, True)
         for _ in range(2):
@@ -106,7 +112,7 @@ class FinallyStage2Trainer(FinallyBaseTrainer):
             '': dict(
                 gen_wav=gen_wav,
                 real_wav=real_wav,
-                wavlm=gen.module.wavlm if self.multi_gpu else gen.wavlm
+                wavlm=self.wavlm
             ),
             'ms-stft': dict(
                 discs_gen_out=disc_gen_out,

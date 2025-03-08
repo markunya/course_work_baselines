@@ -49,8 +49,7 @@ class LMOSLoss(nn.Module):
         self.stft = T.Spectrogram(n_fft=fft_size, hop_length=hop_length, power=1)
 
     def forward(self, real_wav, gen_wav, wavlm):
-        # it should be guaranteed that wavlm weights not require grad
-        wavlm.eval()
+        # it should be guaranteed that wavlm weights not require grad in eval mode
         if len(real_wav.shape) == 3:
             real_wav = real_wav.squeeze(1)
         if len(gen_wav.shape) == 3:

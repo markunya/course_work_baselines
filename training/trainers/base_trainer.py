@@ -113,7 +113,10 @@ class BaseTrainer:
             print(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             if 'optimizer_state_dict' in checkpoint:
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                try:
+                    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except Exception as e:
+                    tqdm.write(f'An error occured when loading checkpoint for optimizer for {model_name}: {e}')
             else:
                 print(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
 

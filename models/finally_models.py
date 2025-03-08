@@ -161,6 +161,7 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         upsamplewaveunet_upsample_factor=3, # from 16 to 48
         upsamplewaveunet_upsampler_features=512, # as in paper
 
+        wavlm_extraction_layer=6,
         norm_type: Literal["weight", "spectral"] = "weight",
         use_skip_connect=True,
 
@@ -211,10 +212,7 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         self.upsamplewaveunet = None
         self.set_use_upsamplewaveunet(use_upsamplewaveunet)
 
-        bundle = torchaudio.pipelines.WAVLM_LARGE
-        self.wavlm = bundle.get_model()
-        for param in self.wavlm.parameters():
-            param.requires_grad_(False)
+        self.wavlm_extraction_layer = wavlm_extraction_layer
 
     def set_use_upsamplewaveunet(self, use):
         self.use_upsamplewaveunet = use
@@ -247,14 +245,13 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
 
 
     @torch.no_grad()
-    def apply_wavlm(self, wav):
-        self.wavlm.eval()
+    def apply_wavlm(self, wav, wavlm):
         if len(wav.shape) == 3:
             wav = wav.squeeze(1)
-        features, _ = self.wavlm.extract_features(wav)
-        return features[-1]
+        features, _ = wavlm.extract_features(wav)
+        return features[self.wavlm_extraction_layer]
 
-    def forward(self, x):
+    def forward(self, x, wavlm):
         x_orig = x.clone()
         x_orig = x_orig[:, :, : x_orig.shape[2] // 1024 * 1024]
 
@@ -262,7 +259,7 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         x = self.apply_spectralunet(x)
         assert x.shape[1] == 512
 
-        wavlm_features = self.apply_wavlm(x_orig)
+        wavlm_features = self.apply_wavlm(x_orig, wavlm)
         wavlm_features = wavlm_features.permute(0, 2, 1)
         assert wavlm_features.shape[1] == 1024
 

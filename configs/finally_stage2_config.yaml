@@ -68,16 +68,16 @@ data:
     val_data_file_path: "datasets/splits/LibriTTS-R_split/val_files.txt"
     inference_data_root: "../LibriTTS_R"
     inference_data_file_path: "datasets/splits/LibriTTS-R_split/test_files.txt"
-    train_batch_size: 24
+    train_batch_size: 32
     workers: 16
 
 train:
     trainer: finally_stage2_trainer
-    val_metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
+    val_metrics: []
     start_step: 1
-    steps: 45000
+    steps: 30000
     log_step: 250
-    checkpoint_step: 9000
+    checkpoint_step: 10000
     val_step: 5000
 
 inference:
@@ -102,9 +102,10 @@ models:
                 warmup_steps: 10
 
         checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_finally_stage1_new_split_rare.pth"
-        args: {}
+        args:
+            wavlm_extraction_layer: -1
         losses:
-            lmos: 20
+            lmos: 0.02
             gen_loss: 0.4
             feature_loss: 20.0 
     
@@ -125,7 +126,7 @@ models:
 
       checkpoint_path: null
       args:
-          filters: 16
+          filters: 32
           n_ffts: [2048, 1024, 512, 256, 128]
           hop_lengths: [512, 256, 128, 64, 32]
           win_lengths: [2048, 1024, 512, 256, 128]
