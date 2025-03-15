@@ -151,10 +151,12 @@ cache
 *.out
 *.sbatch
 
+utmos_demo_repo
 experiment
 kaggle.json
 
 datasets/augmentations.ipynb
+tester.ipynb
 
 #datasets
 VCTK/

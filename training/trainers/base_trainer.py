@@ -18,6 +18,7 @@ from datasets.datasets import datasets_registry
 from metrics.metrics import metrics_registry
 
 from utils.data_utils import save_wavs_to_dir
+from utils.model_utils import unwrap_model
 
 gan_trainers_registry = ClassRegistry()
 
@@ -277,7 +278,7 @@ class BaseTrainer:
         for model_name in self.models.keys():
             try:
                 checkpoint = {
-                    'state_dict': self.models[model_name].state_dict(),
+                    'state_dict': unwrap_model(self.models[model_name]).state_dict(),
                     'optimizer_state_dict': self.optimizers[model_name].state_dict()
                 }
                 path = os.path.join(self.checkpoints_dir,

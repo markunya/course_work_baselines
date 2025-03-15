@@ -237,7 +237,6 @@ class AugmentedLibriTTSR(Dataset):
         seed=42,
         eval=False,
         split=True,
-        lowpass='random',
         augs_conf=tuple()
     ):
         self.root = root
@@ -247,8 +246,8 @@ class AugmentedLibriTTSR(Dataset):
         self.split = split
         self.eval = eval
         self.seed = seed
-        self.lowpass = lowpass
         self.augmentations = self._get_augs_from_conf(augs_conf)
+        self.resamplers = {}
 
     def _get_augs_from_conf(self, augs_conf):
         augs = []
@@ -295,11 +294,13 @@ class AugmentedLibriTTSR(Dataset):
 
         wav, sr = torchaudio.load(os.path.join(self.root, filename))
 
-        if sr != self.sampling_rate:
-            wav = low_pass_filter(
-                wav.numpy(), self.input_freq,
-                lp_type=self.lowpass, orig_sr=self.sampling_rate
-            )
+        if self.sampling_rate != sr:
+            if sr not in self.resamplers:
+                self.resamplers[sr] = torchaudio.transforms.Resample(
+                                        orig_freq=sr,
+                                        new_freq=self.sampling_rate
+                                    )
+            wav = self.resamplers[sr](wav.squeeze(0)).numpy()
         else:
             wav = wav.numpy().squeeze(0)
 

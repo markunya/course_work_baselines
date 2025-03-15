@@ -87,3 +87,8 @@ def get_2d_padding(kernel_size: tp.Tuple[int, int], dilation: tp.Tuple[int, int]
 
 def closest_power_of_two(n):
     return 1 << (n - 1).bit_length()
+
+def unwrap_model(model):
+    if isinstance(model, nn.DataParallel):
+        return model.module
+    return model

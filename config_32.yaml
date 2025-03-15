@@ -12,7 +12,7 @@ mel:
     n_fft: 1024
     hop_size: 256
     win_size: 1024
-    sampling_rate: 24000
+    sampling_rate: 16000
     fmin: 0
     fmax: 8000
     fmax_for_loss: null
@@ -78,7 +78,7 @@ train:
     steps: 30000
     log_step: 250
     checkpoint_step: 10000
-    val_step: 5000
+    val_step: 7500
 
 inference:
     trainer: finally_stage2_trainer
@@ -101,13 +101,15 @@ models:
                 step_period: 200
                 warmup_steps: 10
 
-        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_finally_stage1_new_split_rare.pth"
-        args:
-            wavlm_extraction_layer: -1
+        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_stage1_sr_fix.pth"
+        args: {}
         losses:
-            lmos: 0.0
-            gen_loss: 0.4
-            feature_loss: 20.0 
+            lmos:
+              coef: 0.01
+            gen_loss:
+              coef: 0.4
+            feature_loss:
+              coef: 20.0
     
     ms-stft_disc:
       optimizer:
@@ -131,5 +133,6 @@ models:
           hop_lengths: [512, 256, 128, 64, 32]
           win_lengths: [2048, 1024, 512, 256, 128]
       losses:
-          disc_loss: 1.0   
+          disc_loss:
+            coef: 1.0
     
