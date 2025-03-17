@@ -101,12 +101,12 @@ models:
                 step_period: 200
                 warmup_steps: 10
 
-        checkpoint_path: # checkpoint_path
+        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_30000_stage2_sr_fix_lmos_0.01.pth"
         args:
           use_upsamplewaveunet: true
         losses:
             lmos:
-              coef: 0.01
+              coef: 0.005
             gen_loss:
               coef: 5.0
             feature_loss:

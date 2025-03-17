@@ -185,6 +185,7 @@ class BaseTrainer:
                 self.config.data.inference_data_file_path,
                 self.config.mel,
                 split=False,
+                eval=True,
                 **self.config.data.dataset_args
             )
         tqdm.write('Dataset for inference successfully initialized')
