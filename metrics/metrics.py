@@ -9,7 +9,7 @@ from torch import nn
 from utils.data_utils import mel_spectrogram
 from utils.class_registry import ClassRegistry
 from collections import OrderedDict
-from models.metric_models import Wav2Vec2MOS
+from models.metric_models import Wav2Vec2MOS, UTMOSV2
 
 metrics_registry = ClassRegistry()
 
@@ -133,3 +133,13 @@ class MOSNet(ResamleMetric):
             mos_scores.append(mos_score)
 
         return np.mean(mos_scores)
+
+@metrics_registry.add_to_registry(name="utmos")
+class UTMOSMetric:
+    def __init__(self, config):
+        self.utmos = UTMOSV2(orig_sr=48000)
+    
+    def __call__(self, real_batch, gen_batch):
+        with torch.no_grad():
+            moses = self.utmos(gen_batch)
+        return torch.mean(moses).item()

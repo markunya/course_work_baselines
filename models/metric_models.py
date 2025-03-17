@@ -8,6 +8,7 @@ import utmosv2
 from transformers import AutoModel
 import torch
 import torch.nn as nn
+from utils.model_utils import requires_grad
 
 class Wav2Vec2MOS(nn.Module):
     sample_rate = 16_000
@@ -110,6 +111,8 @@ class UTMOSV2(nn.Module):
                 power=2.0,
             ) for cfg in self.spec_cfgs
         ]
+
+        requires_grad(self, False)
 
     def _extend_audio(self, y: torch.Tensor, length: int, mode: str = "tile") -> torch.Tensor:
         if y.shape[-1] >= length:
