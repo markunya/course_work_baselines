@@ -10,10 +10,13 @@ from utils.data_utils import mel_spectrogram
 from utils.class_registry import ClassRegistry
 from collections import OrderedDict
 from models.metric_models import Wav2Vec2MOS, UTMOSV2
+import wvmos
+from models.metric_models import WV_MOS
+from torchmetrics.audio.dnsmos import DeepNoiseSuppressionMeanOpinionScore
 
 metrics_registry = ClassRegistry()
 
-class ResamleMetric(ABC):
+class ResampleMetric(ABC):
     def __init__(self, config, target_sr):
         self.target_sr = target_sr
         self.device = config.exp.device
@@ -49,7 +52,7 @@ class L1MelDiff:
         return self.l1_loss(real_mel, gen_mel)
 
 @metrics_registry.add_to_registry(name='wb_pesq')
-class WBPesq(ResamleMetric):
+class WBPesq(ResampleMetric):
     def __init__(self, config):
         super().__init__(config, 16000)
 
@@ -113,7 +116,7 @@ def extract_prefix(prefix, weights):
 
 
 @metrics_registry.add_to_registry(name="mosnet")
-class MOSNet(ResamleMetric):
+class MOSNet(ResampleMetric):
     def __init__(self, config):
         self.model = Wav2Vec2MOS("metrics/weights/wave2vec2mos.pth").to(config.exp.device)
         super().__init__(config, self.model.sample_rate)
@@ -145,3 +148,39 @@ class UTMOSMetric:
         with torch.no_grad():
             moses = self.utmos(gen_batch)
         return torch.mean(moses).item()
+
+@metrics_registry.add_to_registry(name="wv-mos")
+class WVMosMetric(ResampleMetric):
+    def __init__(self, config):
+        super().__init__(config, 16000)
+        self.wvmos = WV_MOS(cuda = config.exp.device == 'cuda')
+        self.processor = wvmos.wv_mos.Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
+
+    def __call__(self, real_batch, gen_batch):
+        resampled = self.resample(gen_batch.squeeze())
+        input = self.processor(
+            resampled,
+            return_tensors="pt",
+            padding=True,
+            sampling_rate=16000
+        ).input_values
+
+        with torch.no_grad():
+            score = self.wvmos(input.squeeze(0))
+            score = torch.mean(score).item()
+            
+        return score
+
+@metrics_registry.add_to_registry(name="dnsmos")
+class DNSMosMetric:
+    def __init__(self, config):
+        self.dnsmos = DeepNoiseSuppressionMeanOpinionScore(
+            fs=config.mel.out_sr,
+            personalized=True,
+            device=config.exp.device
+        )
+    
+    def __call__(self, real_batch, gen_batch):
+        with torch.no_grad():
+            score = torch.mean(self.dnsmos(gen_batch))
+        return score

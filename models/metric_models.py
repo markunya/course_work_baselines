@@ -8,6 +8,8 @@ import utmosv2
 from transformers import AutoModel
 import torch
 import torch.nn as nn
+import wvmos
+import os
 from utils.model_utils import requires_grad
 
 class Wav2Vec2MOS(nn.Module):
@@ -189,3 +191,39 @@ class UTMOSV2(nn.Module):
         d[:, 1] = 1
 
         return self.utmos(ssl_input, spec_input, d)
+
+class WV_MOS(nn.Module):
+    def __init__(self, cuda=True):
+        super().__init__()
+        self.encoder = wvmos.wv_mos.Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
+        path = os.path.join(os.path.expanduser('~'), ".cache/wv_mos/wv_mos.ckpt")
+        
+        self.dense = nn.Sequential(
+            nn.Linear(768, 128),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(128, 1)
+        )
+        
+        self.encoder.eval()
+        for p in self.encoder.parameters():
+            p.requires_grad_(False)
+        
+        checkpoint = torch.load(
+            path,
+            weights_only=False,
+            map_location='cpu' if not cuda else 'cuda'
+        )['state_dict']
+        self.load_state_dict(
+            wvmos.wv_mos.extract_prefix('model.', checkpoint)
+        )
+        
+        self.eval()
+        if cuda:
+            self.cuda()
+        
+    def forward(self, x):
+        x = self.encoder(x)['last_hidden_state']
+        x = self.dense(x)
+        x = x.mean(dim=[1,2], keepdims=True)
+        return x

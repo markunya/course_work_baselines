@@ -75,7 +75,7 @@ class PesqLoss_(PesqLoss):
         super().__init__(factor=factor, sample_rate=sample_rate)
 
     def forward(self, real_wav, gen_wav):
-        super().forward(real_wav, gen_wav)
+        return -torch.mean(super().forward(real_wav.squeeze(), gen_wav.squeeze()))
 
 @losses_registry.add_to_registry(name='utmos')
 class UTMOSLoss(nn.Module):
