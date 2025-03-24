@@ -9,6 +9,7 @@ import torchaudio
 from torch.utils.data import Dataset
 from librosa.util import normalize
 
+from typing import Literal
 from utils.class_registry import ClassRegistry
 from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file_list, split_audios
 from utils.data_utils import low_pass_filter
@@ -27,7 +28,7 @@ class MelDataset(Dataset):
         self.fine_tuning = fine_tuning
         self.split = split
         self.segment_size = mel_conf.segment_size
-        self.sampling_rate = mel_conf.sampling_rate
+        self.sampling_rate = mel_conf.in_sr
         self.n_fft = mel_conf.n_fft
         self.num_mels = mel_conf.num_mels
         self.hop_size = mel_conf.hop_size
@@ -127,7 +128,7 @@ class VCTKDataset(Dataset):
         self.root = root
         self.files_list = read_file_list(files_list_path)
         self.segment_size = mel_conf.segment_size
-        self.sampling_rate = mel_conf.sampling_rate
+        self.sampling_rate = mel_conf.in_sr
         self.split = split
         self.input_freq = input_freq
         self.lowpass = lowpass
@@ -186,7 +187,7 @@ class VoicebankDataset(Dataset):
         self.clean_wavs_dir = clean_wavs_dir
         self.noisy_wavs_dir = noisy_wavs_dir
         self.segment_size = mel_conf.segment_size
-        self.sampling_rate = mel_conf.sampling_rate
+        self.sampling_rate = mel_conf.in_sr
         self.split = split
         self.input_freq = input_freq
 
@@ -227,8 +228,7 @@ class VoicebankDataset(Dataset):
     def __len__(self):
         return len(self.files_list)
 
-@datasets_registry.add_to_registry(name='augmented_libritts-r')
-class AugmentedLibriTTSR(Dataset):
+class AugmentedDataset(Dataset):
     def __init__(
         self,
         root,
@@ -242,7 +242,8 @@ class AugmentedLibriTTSR(Dataset):
         self.root = root
         self.files_list = read_file_list(files_list_path)
         self.segment_size = mel_conf.segment_size
-        self.sampling_rate = mel_conf.sampling_rate
+        self.in_sr = mel_conf.in_sr
+        self.out_sr = mel_conf.out_sr if 'out_sr' in mel_conf else self.in_sr
         self.split = split
         self.eval = eval
         self.seed = seed
@@ -266,7 +267,7 @@ class AugmentedLibriTTSR(Dataset):
                                             if self.eval else args['ir_files_path']['train']
 
             try:
-                augs.append(augmentations_registry[name](sr=self.sampling_rate, **args))
+                augs.append(augmentations_registry[name](sr=self.out_sr, **args))
             except Exception as e:
                 print(f"Failed to initiallize {name}: {e}")
 
@@ -289,16 +290,42 @@ class AugmentedLibriTTSR(Dataset):
         max_val = torch.max(torch.abs(wav))
         return wav / max_val if max_val > 0 else wav
 
+    def __len__(self):
+        return len(self.files_list)
+
+@datasets_registry.add_to_registry(name='augmented_libritts-r')
+class AugmentedLibriTTSR(AugmentedDataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        seed=42,
+        eval=False,
+        split=True,
+        augs_conf=tuple()
+    ):
+        super().__init__(
+            root=root,
+            files_list_path=files_list_path,
+            mel_conf=mel_conf,
+            seed=seed,
+            eval=eval,
+            split=split,
+            augs_conf=augs_conf
+        )
+
+    
     def __getitem__(self, index):
         filename = self.files_list[index]
 
-        wav, sr = torchaudio.load(os.path.join(self.root, filename))
+        wav, sr = torchaudio.load(os.path.join(self.root, filename))            
 
-        if self.sampling_rate != sr:
+        if self.in_sr != sr:
             if sr not in self.resamplers:
                 self.resamplers[sr] = torchaudio.transforms.Resample(
                                         orig_freq=sr,
-                                        new_freq=self.sampling_rate
+                                        new_freq=self.in_sr
                                     )
             wav = self.resamplers[sr](wav.squeeze(0)).numpy()
         else:
@@ -324,5 +351,70 @@ class AugmentedLibriTTSR(Dataset):
             'name': filename
         }
 
-    def __len__(self):
-        return len(self.files_list)
+@datasets_registry.add_to_registry(name='augmented_daps')
+class AugmentedDaps(AugmentedDataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        seed=42,
+        eval=False,
+        split=True,
+        augs_conf=tuple()
+    ):
+        super().__init__(
+            root=root,
+            files_list_path=files_list_path,
+            mel_conf=mel_conf,
+            seed=seed,
+            eval=eval,
+            split=split,
+            augs_conf=augs_conf
+        )
+        assert self.out_sr % self.in_sr == 0, "in_sr should devide out_sr"
+        if not eval and not split:
+            raise ValueError('This dataset do not support split=False in train mode')
+        
+        self.cache = {}
+    
+    def __getitem__(self, index):
+        filename = self.files_list[index]
+        if filename not in self.cache: 
+            self.cache[filename] = torchaudio.load(os.path.join(self.root, filename))         
+        wav, sr = self.cache[filename]
+
+        if self.out_sr != sr:
+            key = (sr, self.out_sr)
+            if key not in self.resamplers:
+                self.resamplers[key] = torchaudio.transforms.Resample(
+                                        orig_freq=sr,
+                                        new_freq=self.out_sr
+                                    )
+            wav = self.resamplers[key](wav.squeeze(0)).numpy()
+        else:
+            wav = wav.numpy().squeeze(0)
+
+        (wav,) = split_audios([wav], self.segment_size, self.split)
+        wav = torch.from_numpy(wav[None])
+
+        augmented = self._apply_augs(wav, index).squeeze()
+
+        input_wav = self._safe_normalize(augmented)[None] * WAV_AFTERNORM_COEF
+        target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
+        input_wav = input_wav[:,:target_wav.shape[-1]]
+
+        if self.in_sr != self.out_sr:
+            key = (self.out_sr, self.in_sr)
+            if key not in self.resamplers:
+                self.resamplers[key] = torchaudio.transforms.Resample(
+                                        orig_freq=self.out_sr,
+                                        new_freq=self.in_sr
+                                    )
+            input_wav = self.resamplers[key](input_wav)
+
+        return {
+            'input_wav': input_wav,
+            'wav': target_wav,
+            'name': filename
+        }

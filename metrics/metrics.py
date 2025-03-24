@@ -17,7 +17,8 @@ class ResamleMetric(ABC):
     def __init__(self, config, target_sr):
         self.target_sr = target_sr
         self.device = config.exp.device
-        self.resampler = T.Resample(orig_freq=config.mel.sampling_rate,
+        sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
+        self.resampler = T.Resample(orig_freq=sr,
                                 new_freq=self.target_sr).to(self.device)
         
     def resample(self, wav):
@@ -32,7 +33,7 @@ class L1MelDiff:
     def __init__(self, config):
         self.n_fft = config.mel.n_fft
         self.num_mels = config.mel.num_mels
-        self.sampling_rate = config.mel.sampling_rate
+        self.sampling_rate = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
         self.hop_size = config.mel.hop_size
         self.win_size = config.mel.win_size
         self.fmin = config.mel.fmin
@@ -71,7 +72,7 @@ class WBPesq(ResamleMetric):
 @metrics_registry.add_to_registry(name='stoi')
 class STOI:
     def __init__(self, config):
-        self.sr = config.mel.sampling_rate
+        self.sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
 
     def __call__(self, real_batch, gen_batch):
         scores = []
@@ -137,7 +138,8 @@ class MOSNet(ResamleMetric):
 @metrics_registry.add_to_registry(name="utmos")
 class UTMOSMetric:
     def __init__(self, config):
-        self.utmos = UTMOSV2(orig_sr=48000)
+        orig_sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
+        self.utmos = UTMOSV2(orig_sr=orig_sr)
     
     def __call__(self, real_batch, gen_batch):
         with torch.no_grad():

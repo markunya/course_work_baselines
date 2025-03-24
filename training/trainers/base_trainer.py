@@ -263,7 +263,9 @@ class BaseTrainer:
                             'gen_wav': batch['input_wav'] if 'input_wav' in batch else batch['wav'],
                             'name': batch['name']
                         }
-                        self.logger.log_synthesized_batch(input_batch, self.config.mel.sampling_rate, step=self.step)
+               
+                        sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else self.config.mel.in_sr
+                        self.logger.log_synthesized_batch(input_batch, sr, step=self.step)
 
                 if self.step % self.config.train.val_step == 0:
                     self.validate()
@@ -310,7 +312,8 @@ class BaseTrainer:
         for _ in range(self.config.exp.log_batch_size):
             batch = next(iterator)
             gen_batch = self.synthesize_wavs(batch)
-            self.logger.log_synthesized_batch(gen_batch, self.config.mel.sampling_rate, step=self.step)
+            sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else self.config.mel.in_sr
+            self.logger.log_synthesized_batch(gen_batch, sr, step=self.step)
 
     @torch.no_grad()
     def validate(self):
@@ -338,15 +341,17 @@ class BaseTrainer:
             for batch in self.inference_dataloader:
                 gen_batch = self.synthesize_wavs(batch)
                 run_inf_dir = os.path.join(self.inference_out_dir, self.config.exp.run_name)
-                sr = self.config.mel.sampling_rate
+
+                in_sr = self.config.mel.in_sr
+                out_sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else in_sr
                 
                 if 'input_wav' in batch:
                     save_wavs_to_dir(batch['input_wav'], batch['name'],
-                                    os.path.join(run_inf_dir, 'input'), sr)
+                                    os.path.join(run_inf_dir, 'input'), in_sr)
                 save_wavs_to_dir(batch['wav'], batch['name'],
-                                os.path.join(run_inf_dir, 'ground_truth'), sr)
+                                os.path.join(run_inf_dir, 'ground_truth'), out_sr)
                 save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
-                                os.path.join(run_inf_dir, 'generated'), sr)
+                                os.path.join(run_inf_dir, 'generated'), out_sr)
 
                 self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
 

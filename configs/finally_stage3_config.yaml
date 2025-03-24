@@ -7,18 +7,19 @@ exp:
     log_batch_size: 15
     
 mel:
-    segment_size: 8192
+    segment_size: 24567
     num_mels: 80
     n_fft: 1024
     hop_size: 256
     win_size: 1024
-    sampling_rate: 16000
+    in_sr: 16000
+    out_sr: 48000
     fmin: 0
     fmax: 8000
     fmax_for_loss: null
 
 data:
-    dataset: augmented_libritts-r
+    dataset: augmented_daps
     dataset_args:
         augs_conf:
           - name: noise
@@ -63,17 +64,17 @@ data:
             args:
               prob: 0.45
 
-    trainval_data_root: "../LibriTTS_R"
-    train_data_file_path: "datasets/splits/LibriTTS-R_split/train_files.txt"
-    val_data_file_path: "datasets/splits/LibriTTS-R_split/val_files.txt"
-    inference_data_root: "../LibriTTS_R"
-    inference_data_file_path: "datasets/splits/LibriTTS-R_split/test_files.txt"
+    trainval_data_root: "../daps"
+    train_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    val_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    inference_data_root: "../daps"
+    inference_data_file_path: "datasets/splits/DAPS_split/files.txt"
     train_batch_size: 32
     workers: 16
 
 train:
     trainer: finally_stage3_trainer
-    val_metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
+    val_metrics: ["utmos", "dnsmos", "wv-mos", "wb_pesq", "stoi", "si_sdr"]
     start_step: 1
     steps: 40000
     log_step: 250
@@ -112,9 +113,9 @@ models:
             feature_loss:
               coef: 15.0
             utmos:
-              coef: -20.0
+              coef: 20.0
             pesq:
-              coef: -2.0
+              coef: 2.0
     
     ms-stft_disc:
       optimizer:

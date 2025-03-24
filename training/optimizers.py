@@ -13,7 +13,7 @@ class Adam_(Adam):
 @optimizers_registry.add_to_registry(name='sgd')
 class SGD_(SGD):
     def __init__(self, params, lr=0.01, momentum=0.9):
-        super().__init_(params, lr=lr, momentum=0.9)
+        super().__init_(params, lr=lr, momentum=momentum)
 
 @optimizers_registry.add_to_registry(name='adamW')
 class AdamW_(AdamW):

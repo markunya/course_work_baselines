@@ -46,10 +46,9 @@ class RandomNoise:
                 self.resampler_cache[noise_sr] = Resample(noise_sr, target_sr)
             noise_waveform = self.resampler_cache[noise_sr](noise_waveform)
 
+        repeat_factor = (target_length // noise_waveform.shape[1]) + 1
+        noise_waveform = noise_waveform.repeat(1, repeat_factor)
         noise_waveform = noise_waveform[:, :target_length]
-        if noise_waveform.shape[1] < target_length:
-            pad_size = target_length - noise_waveform.shape[1]
-            noise_waveform = torch.nn.functional.pad(noise_waveform, (0, pad_size))
 
         return noise_waveform
 
