@@ -15,6 +15,7 @@ from utils.data_utils import load_wav, MAX_WAV_VALUE, mel_spectrogram, read_file
 from utils.data_utils import low_pass_filter
 from utils.model_utils import closest_power_of_two
 from datasets.augmentations import augmentations_registry
+from tqdm import tqdm
 
 datasets_registry = ClassRegistry()
 
@@ -62,7 +63,7 @@ class MelDataset(Dataset):
                 audio = self.cached_wav
                 self._cache_ref_count -= 1
         except Exception as e:
-            print(f'Warning: Failed to load {filename}, error: {e}. Picking a random file instead.')
+            tqdm.write(f'Warning: Failed to load {filename}, error: {e}. Picking a random file instead.')
             random_index = random.randint(0, len(self.files_list) - 1)
             return self.__getitem__(random_index, attempts=attempts-1)
 
@@ -269,7 +270,7 @@ class AugmentedDataset(Dataset):
             try:
                 augs.append(augmentations_registry[name](sr=self.out_sr, **args))
             except Exception as e:
-                print(f"Failed to initiallize {name}: {e}")
+                tqdm.write(f"Failed to initiallize {name}: {e}")
 
         return augs
 
@@ -281,8 +282,8 @@ class AugmentedDataset(Dataset):
             try:
                 result = aug(result, seed)
             except Exception as e:
-                print(f"Failed to apply {aug.__class__.__name__}: {e}")
-
+                tqdm.write(f"Failed to apply {aug.__class__.__name__}: {e}")
+        
         return result
 
     def _safe_normalize(self, wav):
@@ -398,11 +399,17 @@ class AugmentedDaps(AugmentedDataset):
         (wav,) = split_audios([wav], self.segment_size, self.split)
         wav = torch.from_numpy(wav[None])
 
-        augmented = self._apply_augs(wav, index).squeeze()
-
-        input_wav = self._safe_normalize(augmented)[None] * WAV_AFTERNORM_COEF
+        input_wav = self._apply_augs(wav, index).squeeze()[None]
+        
         target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
+
         input_wav = input_wav[:,:target_wav.shape[-1]]
+
+        base = 3072
+        remainder = input_wav.shape[-1] % base
+        pad_size = (base - remainder) if remainder != 0 else 0
+        input_wav = torch.nn.functional.pad(input_wav, (0, pad_size))
+        target_wav = torch.nn.functional.pad(target_wav, (0, pad_size))
 
         if self.in_sr != self.out_sr:
             key = (self.out_sr, self.in_sr)
@@ -413,8 +420,10 @@ class AugmentedDaps(AugmentedDataset):
                                     )
             input_wav = self.resamplers[key](input_wav)
 
+        input_wav = self._safe_normalize(input_wav) * WAV_AFTERNORM_COEF
+
         return {
-            'input_wav': input_wav,
-            'wav': target_wav,
+            'input_wav': input_wav.squeeze(),
+            'wav': target_wav.squeeze(),
             'name': filename
         }

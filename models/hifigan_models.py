@@ -6,6 +6,7 @@ from torch.nn.utils.parametrizations import weight_norm, spectral_norm
 from utils.model_utils import init_weights, get_padding
 from typing import Literal
 from models.models import LRELU_SLOPE, models_registry
+from tqdm import tqdm
 
 class ResBlock1(nn.Module):
     def __init__(self, channels, kernel_size=3, dilation=(1, 3, 5),
@@ -121,7 +122,7 @@ class HifiGan_Generator(torch.nn.Module):
         return x
 
     def remove_weight_norm(self):
-        print('Removing weight norm...')
+        tqdm.write('Removing weight norm...')
         for l in self.ups:
             remove_weight_norm(l)
         for l in self.resblocks:

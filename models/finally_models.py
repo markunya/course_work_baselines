@@ -127,6 +127,46 @@ class MultiScaleSTFTDiscriminator(nn.Module):
             logits.append(logit)
             fmaps.append(fmap)
         return logits, fmaps
+    
+
+class UpsampleWaveUnet(nn.Module):
+    def __init__(
+            self,
+            block_widths,
+            block_depth,
+            in_width,
+            out_width,
+            waveunet_norm_type,
+            upsample_factor,
+            upsampler_norm
+        ):
+        super().__init__()
+        self.waveunet = MultiScaleResnet(
+                block_widths,
+                block_depth,
+                mode="waveunet_k5",
+                in_width=in_width,
+                out_width=out_width,
+                norm_type=waveunet_norm_type
+            )
+        self.activation = nn.LeakyReLU(LRELU_SLOPE)
+        self.upsample_block = nn.Sequential(
+                upsampler_norm(
+                    nn.ConvTranspose1d(
+                        self.waveunet.out_dims, 1, 
+                        kernel_size=upsample_factor,
+                        stride=upsample_factor
+                    )
+                ),
+            )
+        
+        init_weights(self)
+
+    def forward(self, x):
+        x = self.waveunet(x)
+        x = self.activation(x)
+        x = self.upsample_block(x)
+        return x
 
 @models_registry.add_to_registry("finally_gen")
 class FinallyGenerator(A2AHiFiPlusGeneratorV2):
@@ -214,34 +254,20 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
     def set_use_upsamplewaveunet(self, use):
         self.use_upsamplewaveunet = use
         if self.use_upsamplewaveunet and self.upsamplewaveunet is None:
-            waveunet = MultiScaleResnet(
-                self.upsamplewaveunet_block_widths,
-                self.upsamplewaveunet_block_depth,
-                mode="waveunet_k5",
+            self.upsamplewaveunet = UpsampleWaveUnet(
+                block_widths=self.upsamplewaveunet_block_widths,
+                block_depth=self.upsamplewaveunet_block_depth,
                 in_width=self.hifi.out_channels,
                 out_width=self.upsamplewaveunet_upsampler_features,
-                norm_type=self.norm_type
+                waveunet_norm_type=self.norm_type,
+                upsample_factor=self.upsamplewaveunet_upsample_factor,
+                upsampler_norm=self.norm,
             )
-            upsample_block = nn.Sequential(
-                self.norm(
-                    nn.ConvTranspose1d(
-                        waveunet.out_dims, 1, 
-                        kernel_size=self.upsamplewaveunet_upsample_factor,
-                        stride=self.upsamplewaveunet_upsample_factor
-                    )
-                ),
-            )
-
-            self.upsamplewaveunet = nn.Sequential(
-                waveunet,
-                nn.LeakyReLU(LRELU_SLOPE),
-                upsample_block
-            )
-
-            init_weights(self.upsamplewaveunet)
 
     def forward(self, x, wavlm_features):
         x_orig = x.clone()
+        
+        assert x_orig.shape[2] % 1024 == 0
         x_orig = x_orig[:, :, : x_orig.shape[2] // 1024 * 1024]
 
         x = self.get_melspec(x_orig)
@@ -274,5 +300,4 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
             x = self.conv_post(x)
             
         x = torch.tanh(x)
-
         return x

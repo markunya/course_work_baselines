@@ -61,16 +61,16 @@ class SSLEncoder(nn.Module):
             x = x.squeeze(1)
 
         mean = x.mean(dim=-1, keepdim=True)
-        std = x.std(dim=-1, keepdim=True) + 1e-6
+        std = x.std(dim=-1, keepdim=True)
+        std = std.clamp(min=1e-5)
         x = (x - mean) / std
 
         x = x.to(self.model.device)
         outputs = self.model(input_values=x, output_hidden_states=True)
-
         return outputs.hidden_states
 
 class UTMOSV2(nn.Module):
-    def __init__(self, orig_sr):
+    def __init__(self, orig_sr, device, mel_on_cpu=False):
         super().__init__()
         self.orig_sr = orig_sr
         self.target_sr = 16000
@@ -95,15 +95,16 @@ class UTMOSV2(nn.Module):
         self.spec_frames_mixup_inner = True
         self.spec_frames_mixup_alpha = 0.4
         
-        self.utmos = utmosv2.create_model()
-        self.utmos._model.ssl.encoder = SSLEncoder(
+        self.utmos_wrapper = utmosv2.create_model(device=device)
+        self.utmos = self.utmos_wrapper._model 
+        self.utmos.ssl.encoder = SSLEncoder(
             sr=self.target_sr,
             model_name="facebook/wav2vec2-base",
             freeze=True
-        )
+        ).to(device)
 
         self.resample = T.Resample(orig_freq=self.orig_sr, new_freq=self.target_sr)
-        self.mel_spectrograms = [
+        self.mel_spectrograms = nn.ModuleList([
             T.MelSpectrogram(
                 sample_rate=self.target_sr,
                 n_fft=cfg["n_fft"],
@@ -112,7 +113,8 @@ class UTMOSV2(nn.Module):
                 n_mels=cfg["n_mels"],
                 power=2.0,
             ) for cfg in self.spec_cfgs
-        ]
+        ])
+        self.mel_on_cpu = mel_on_cpu
 
         requires_grad(self, False)
 
@@ -120,7 +122,10 @@ class UTMOSV2(nn.Module):
         if y.shape[-1] >= length:
             return y[:, :length]
         elif mode == "tile":
-            n = length // y.shape[-1] + 1
+            n = length // y.shape[-1]
+            if length % y.shape[-1] != 0:
+                n += 1
+
             y = y.repeat(1, n)[:, :length]
             return y
         else:
@@ -131,10 +136,16 @@ class UTMOSV2(nn.Module):
         return y[:, start : start + length]
 
     def _make_melspec(self, y: torch.Tensor, mel_transform: T.MelSpectrogram, norm: float) -> torch.Tensor:
-        spec = mel_transform(y)
+        if self.mel_on_cpu:
+            device = y.device
+            spec = mel_transform(y.cpu()).to(device)
+        else:
+            spec = mel_transform(y)
 
-        ref_value = spec.amax(dim=[1, 2], keepdim=True)
-        spec_db = 10 * (torch.log10(spec + 1e-10) - torch.log10(ref_value + 1e-10))
+        spec = spec.float()
+        spec = spec.clamp(min=1e-5)
+        ref_value = spec.amax(dim=[1, 2], keepdim=True).clamp(min=1e-5)
+        spec_db = 10 * (torch.log10(spec) - torch.log10(ref_value))
 
         if norm is not None:
             spec_db = (spec_db + norm) / norm
@@ -184,10 +195,13 @@ class UTMOSV2(nn.Module):
         if self.orig_sr != self.target_sr:
             y = self.resample(y)
 
+        if self.mel_on_cpu:
+            self.mel_spectrograms = self.mel_spectrograms.cpu()
+
         ssl_input = self._getitem_ssl(y)
         spec_input = self._getitem_multispec(y)
 
-        d = torch.zeros((y.shape[0], 10))
+        d = torch.zeros((y.shape[0], 10), device=ssl_input.device)
         d[:, 1] = 1
 
         return self.utmos(ssl_input, spec_input, d)

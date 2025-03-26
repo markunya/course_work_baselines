@@ -11,6 +11,7 @@ from utils.class_registry import ClassRegistry
 from collections import OrderedDict
 from models.metric_models import Wav2Vec2MOS, UTMOSV2
 import wvmos
+from tqdm import tqdm
 from models.metric_models import WV_MOS
 from torchmetrics.audio.dnsmos import DeepNoiseSuppressionMeanOpinionScore
 
@@ -67,6 +68,7 @@ class WBPesq(ResampleMetric):
             try:
                 pesq_score = pesq(self.target_sr, real_wav_np, gen_wav_np, 'wb')
             except:
+                tqdm.write('Something went wrong in wb_pesq metric. Beware!')
                 pesq_score = 1
             scores.append(pesq_score)
 
@@ -142,11 +144,11 @@ class MOSNet(ResampleMetric):
 class UTMOSMetric:
     def __init__(self, config):
         orig_sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
-        self.utmos = UTMOSV2(orig_sr=orig_sr)
+        self.utmos = UTMOSV2(orig_sr=orig_sr, device=config.exp.device).to(config.exp.device)
     
     def __call__(self, real_batch, gen_batch):
         with torch.no_grad():
-            moses = self.utmos(gen_batch)
+            moses = self.utmos(gen_batch['gen_wav'])
         return torch.mean(moses).item()
 
 @metrics_registry.add_to_registry(name="wv-mos")
@@ -157,15 +159,15 @@ class WVMosMetric(ResampleMetric):
         self.processor = wvmos.wv_mos.Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
 
     def __call__(self, real_batch, gen_batch):
-        resampled = self.resample(gen_batch.squeeze())
-        input = self.processor(
-            resampled,
-            return_tensors="pt",
-            padding=True,
-            sampling_rate=16000
-        ).input_values
-
         with torch.no_grad():
+            resampled = self.resample(gen_batch['gen_wav'].squeeze())
+            input = self.processor(
+                resampled,
+                return_tensors="pt",
+                padding=True,
+                sampling_rate=16000
+            ).input_values
+
             score = self.wvmos(input.squeeze(0))
             score = torch.mean(score).item()
             
@@ -182,5 +184,5 @@ class DNSMosMetric:
     
     def __call__(self, real_batch, gen_batch):
         with torch.no_grad():
-            score = torch.mean(self.dnsmos(gen_batch))
+            score = torch.mean(self.dnsmos(gen_batch['gen_wav']))
         return score

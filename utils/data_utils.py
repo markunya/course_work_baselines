@@ -10,13 +10,14 @@ import librosa
 from scipy.io.wavfile import read
 from librosa.filters import mel as librosa_mel_fn
 from omegaconf import OmegaConf
+from tqdm import tqdm
 
 MAX_WAV_VALUE = 32768.0
 
 def debug_msg(str):
-    print('-'*20)
-    print(str)
-    print('-'*20)
+    tqdm.write('-'*20)
+    tqdm.write(str)
+    tqdm.write('-'*20)
 
 def apply_inheritance(global_config):
     def apply_inheritance_impl(config):
@@ -83,9 +84,9 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
         y = torch.from_numpy(y).unsqueeze(0)
         
     if torch.min(y) < -1.:
-        print('min value is ', torch.min(y))
+        tqdm.write(f'min value is {torch.min(y).item()}')
     if torch.max(y) > 1.:
-        print('max value is ', torch.max(y))
+        tqdm.write(f'max value is {torch.max(y).item()}')
 
     global mel_basis, hann_window
     if fmax not in mel_basis:

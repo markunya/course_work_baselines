@@ -78,14 +78,14 @@ class BaseTrainer:
         
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
-            print(f'Loading checkpoint for {model_name} from {checkpoint_path}...')
+            tqdm.write(f'Loading checkpoint for {model_name} from {checkpoint_path}...')
             checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
             model.load_state_dict(checkpoint['state_dict'], strict=False)
         else:
             if checkpoint_path:
-                print(f'Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.')
+                tqdm.write(f'Warning: Checkpoint not found at {checkpoint_path}. Initializing {model_name} from scratch.')
             else:
-                print(f'No checkpoint specified for {model_name}. Initializing from scratch.')
+                tqdm.write(f'No checkpoint specified for {model_name}. Initializing from scratch.')
 
         n_gpus = torch.cuda.device_count()
         if n_gpus > 1:
@@ -111,7 +111,7 @@ class BaseTrainer:
 
         checkpoint_path = model_config.get('checkpoint_path')
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
-            print(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
+            tqdm.write(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             if 'optimizer_state_dict' in checkpoint:
                 try:
@@ -119,7 +119,7 @@ class BaseTrainer:
                 except Exception as e:
                     tqdm.write(f'An error occured when loading checkpoint for optimizer for {model_name}: {e}')
             else:
-                print(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
+                tqdm.write(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
 
         return optimizer
     
@@ -264,7 +264,7 @@ class BaseTrainer:
                             'name': batch['name']
                         }
                
-                        sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else self.config.mel.in_sr
+                        sr = self.config.mel.in_sr
                         self.logger.log_synthesized_batch(input_batch, sr, step=self.step)
 
                 if self.step % self.config.train.val_step == 0:

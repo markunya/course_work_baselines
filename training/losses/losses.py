@@ -4,7 +4,7 @@ import torchaudio.transforms as T
 from torch import nn
 from .loss_builder import losses_registry
 from torch_pesq import PesqLoss
-from utils.model_utils import unwrap_model
+from utils.model_utils import unwrap_model, requires_grad
 from models.metric_models import UTMOSV2
 
 @losses_registry.add_to_registry(name='feature_loss')
@@ -80,14 +80,42 @@ class PesqLoss_(PesqLoss):
 @losses_registry.add_to_registry(name='utmos')
 class UTMOSLoss(nn.Module):
     def __init__(
-            self,
-            sample_rate=48000,
-            device='None'
-        ):
+        self,
+        sample_rate=48000,
+        utmos_batch_size=16,
+        use_mp=False,
+        device=None
+    ):
+        super().__init__()
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.utmos = UTMOSV2(orig_sr=sample_rate)
-        
+        self.use_mp = use_mp
+
+        utmos = UTMOSV2(orig_sr=sample_rate, device=device)
+
+        n_gpus = torch.cuda.device_count()
+        if n_gpus > 1:
+            utmos = nn.DataParallel(utmos)
+
+        self.utmos = utmos.to(device)
+        self.utmos.eval()
+        requires_grad(self.utmos, False)
+        self.utmos_batch_size = utmos_batch_size
+
+        unwrap_model(self.utmos).utmos.ssl.encoder.model.gradient_checkpointing_enable()
+        for backbone in unwrap_model(self.utmos).utmos.spec_long.backbones:
+            backbone.set_grad_checkpointing(True)
+
     def forward(self, gen_wav):
-        moses = self.utmos(gen_wav)
-        return -torch.mean(moses)
+        if gen_wav.ndim == 3:
+            gen_wav = gen_wav.squeeze(1)
+
+        sub_batch = gen_wav[:self.utmos_batch_size]
+        
+        if self.use_mp:
+            with torch.amp.autocast(device_type=sub_batch.device.type):
+                mos = self.utmos(sub_batch)
+        else:
+            mos = self.utmos(sub_batch)
+            
+        return -mos.mean()

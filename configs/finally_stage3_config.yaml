@@ -7,7 +7,7 @@ exp:
     log_batch_size: 15
     
 mel:
-    segment_size: 24567
+    segment_size: 24576
     num_mels: 80
     n_fft: 1024
     hop_size: 256
