@@ -82,14 +82,12 @@ class UTMOSLoss(nn.Module):
     def __init__(
         self,
         sample_rate=48000,
-        utmos_batch_size=16,
-        use_mp=False,
+        use_grad_chp=True,
         device=None
     ):
         super().__init__()
         if device is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.use_mp = use_mp
 
         utmos = UTMOSV2(orig_sr=sample_rate, device=device)
 
@@ -100,22 +98,16 @@ class UTMOSLoss(nn.Module):
         self.utmos = utmos.to(device)
         self.utmos.eval()
         requires_grad(self.utmos, False)
-        self.utmos_batch_size = utmos_batch_size
 
-        unwrap_model(self.utmos).utmos.ssl.encoder.model.gradient_checkpointing_enable()
-        for backbone in unwrap_model(self.utmos).utmos.spec_long.backbones:
-            backbone.set_grad_checkpointing(True)
+        if use_grad_chp:
+            unwrap_model(self.utmos).utmos.ssl.encoder.model.gradient_checkpointing_enable()
+            for backbone in unwrap_model(self.utmos).utmos.spec_long.backbones:
+                backbone.set_grad_checkpointing(True)
 
     def forward(self, gen_wav):
         if gen_wav.ndim == 3:
             gen_wav = gen_wav.squeeze(1)
-
-        sub_batch = gen_wav[:self.utmos_batch_size]
         
-        if self.use_mp:
-            with torch.amp.autocast(device_type=sub_batch.device.type):
-                mos = self.utmos(sub_batch)
-        else:
-            mos = self.utmos(sub_batch)
+        mos = self.utmos(gen_wav)
             
         return -mos.mean()

@@ -195,6 +195,7 @@ class BaseTrainer:
             self.train_dataset,
             batch_size=self.config.data.train_batch_size,
             shuffle=True,
+            drop_last=True,
             num_workers=self.config.data.workers,
             pin_memory=True,
         )

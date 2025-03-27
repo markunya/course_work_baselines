@@ -362,6 +362,7 @@ class AugmentedDaps(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
+        virtual_len=100000,
         augs_conf=tuple()
     ):
         super().__init__(
@@ -377,9 +378,13 @@ class AugmentedDaps(AugmentedDataset):
         if not eval and not split:
             raise ValueError('This dataset do not support split=False in train mode')
         
+        self.virtual_len = virtual_len
         self.cache = {}
     
     def __getitem__(self, index):
+        if not self.eval:
+            index = index % len(self.files_list)
+
         filename = self.files_list[index]
         if filename not in self.cache: 
             self.cache[filename] = torchaudio.load(os.path.join(self.root, filename))         
@@ -427,3 +432,8 @@ class AugmentedDaps(AugmentedDataset):
             'wav': target_wav.squeeze(),
             'name': filename
         }
+    
+    def __len__(self):
+        if self.eval:
+            return len(self.files_list)
+        return self.virtual_len
