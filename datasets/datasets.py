@@ -437,3 +437,55 @@ class AugmentedDaps(AugmentedDataset):
         if self.eval:
             return len(self.files_list)
         return self.virtual_len
+    
+@datasets_registry.add_to_registry('finally_dataset')
+class FinallyDataset(Dataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        split=False,
+        eval=True
+    ):
+        assert not split, f"finally dataset can\'t split"
+        assert eval, f"finally dataset has no train mode"
+
+        self.resamplers = {}
+        self.root = root
+        if files_list_path is not None:
+            self.files_list = read_file_list(files_list_path)
+        else:
+            self.files_list = []
+            for _root, _, files in os.walk(self.root):
+                for file in files:
+                    if file.endswith('.wav'):
+                        rel_path = os.path.relpath(os.path.join(_root, file), self.root)
+                        self.files_list.append(rel_path)
+        self.in_sr = mel_conf.in_sr
+
+
+    def __getitem__(self, index):
+        filename = self.files_list[index]
+        wav, sr = torchaudio.load(os.path.join(self.root, filename))            
+
+        if self.in_sr != sr:
+            if sr not in self.resamplers:
+                self.resamplers[sr] = torchaudio.transforms.Resample(
+                                        orig_freq=sr,
+                                        new_freq=self.in_sr
+                                    )
+            wav = self.resamplers[sr](wav)
+
+        base = 1024
+        remainder = wav.shape[-1] % base
+        pad_size = (base - remainder) if remainder != 0 else 0
+        input_wav = torch.nn.functional.pad(wav, (0, pad_size))
+
+        return {
+            'input_wav': input_wav,
+            'name': filename
+        }
+    
+    def __len__(self):
+        return len(self.files_list)

@@ -109,7 +109,16 @@ class BaseTrainer:
         optimizer_class = optimizers_registry[optimizer_name]
         optimizer = optimizer_class(self.models[model_name].parameters(), **model_config['optimizer']['args'])
 
+        if 'load_optimizer_from_checkpoint' in model_config \
+            and not model_config.load_optimizer_from_checkpoint:
+            tqdm.write(
+                f'load_optimizer_from_checkpoint for model {model_name} set to false,' +
+                'initializing optimizer from scratch'
+            )
+
+
         checkpoint_path = model_config.get('checkpoint_path')
+
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
             tqdm.write(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
@@ -347,8 +356,9 @@ class BaseTrainer:
                 if 'input_wav' in batch:
                     save_wavs_to_dir(batch['input_wav'], batch['name'],
                                     os.path.join(run_inf_dir, 'input'), in_sr)
-                save_wavs_to_dir(batch['wav'], batch['name'],
-                                os.path.join(run_inf_dir, 'ground_truth'), out_sr)
+                if 'wav' in batch:
+                    save_wavs_to_dir(batch['wav'], batch['name'],
+                                    os.path.join(run_inf_dir, 'ground_truth'), out_sr)
                 save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
                                 os.path.join(run_inf_dir, 'generated'), out_sr)
 
