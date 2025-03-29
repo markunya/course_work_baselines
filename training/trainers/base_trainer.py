@@ -26,8 +26,9 @@ class BaseTrainer:
     def __init__(self, config):
         self.config = config
         self.device = config.exp.device
-        self.start_step = config.train.start_step
-        self.step = self.start_step
+        if 'train' in config:
+            self.start_step = config.train.start_step
+            self.step = self.start_step
         self.multi_gpu = False
 
     def setup_training(self):
@@ -314,7 +315,7 @@ class BaseTrainer:
     
     def _avg_computed_metrics(self, metrics_dict, action):
         for metric_name, _ in self.metrics: 
-            metrics_dict[f'{action}_{metric_name}'] = np.mean(metrics_dict[f'{action}_{metric_name}'])
+            metrics_dict[f'{action}_{metric_name}'] = np.mean(metrics_dict[f'{action}_{metric_name}']).value()
 
     def _log_synthesized_batch(self, iterator):
         for _ in range(self.config.exp.log_batch_size):

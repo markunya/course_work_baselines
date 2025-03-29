@@ -154,8 +154,9 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
         super().__init__(config)
         self.backbone_freezed = False
         self.sub_batch_size = 16
-        assert config.data.train_batch_size % self.sub_batch_size == 0, \
-            "Train butch size must be divisible by 16 for 3 stage trainer"
+        if 'train_batch_size' in config.data:
+            assert config.data.train_batch_size % self.sub_batch_size == 0, \
+                "Train butch size must be divisible by 16 for 3 stage trainer"
 
     def _freeze_backbone_if_not_freezed(self):
         if not self.backbone_freezed:

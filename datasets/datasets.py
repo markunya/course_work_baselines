@@ -483,7 +483,7 @@ class FinallyDataset(Dataset):
         input_wav = torch.nn.functional.pad(wav, (0, pad_size))
 
         return {
-            'input_wav': input_wav,
+            'input_wav': input_wav.squeeze(),
             'name': filename
         }
     
