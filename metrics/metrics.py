@@ -29,7 +29,7 @@ class ResampleMetric(ABC):
         return self.resampler(wav.unsqueeze(0)).squeeze(0)
     
     @abstractmethod
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         pass
 
 @metrics_registry.add_to_registry(name='l1_mel_diff')
@@ -45,19 +45,20 @@ class L1MelDiff:
         self.device = config.exp.device
         self.l1_loss = nn.L1Loss()
 
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         real_mel = real_batch['mel_for_loss'].to(self.device)
         gen_mel = mel_spectrogram(gen_batch['gen_wav'], self.n_fft, self.num_mels,
                                     self.sampling_rate, self.hop_size, self.win_size,
                                     self.fmin, self.fmax, center=False)
-        return self.l1_loss(real_mel, gen_mel)
+        score = self.l1_loss(real_mel, gen_mel).item()
+        return score
 
 @metrics_registry.add_to_registry(name='wb_pesq')
 class WBPesq(ResampleMetric):
     def __init__(self, config):
         super().__init__(config, 16000)
 
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         scores = []
         for real_wav, gen_wav in zip(real_batch['wav'], gen_batch['gen_wav']):
             real_wav_resampled = self.resample(real_wav.to(self.device))
@@ -65,21 +66,51 @@ class WBPesq(ResampleMetric):
 
             real_wav_np = real_wav_resampled.cpu().numpy()
             gen_wav_np = gen_wav_resampled.cpu().numpy()
+
             try:
-                pesq_score = pesq(self.target_sr, real_wav_np, gen_wav_np, 'wb')
-            except:
-                tqdm.write('Something went wrong in wb_pesq metric. Beware!')
-                pesq_score = 1
+                pesq_score = self.sliding_pesq(real_wav_np, gen_wav_np, self.target_sr)
+            except Exception as e:
+                tqdm.write(f'Something went wrong in wb_pesq metric: {e}')
+                pesq_score = 1.0
+
             scores.append(pesq_score)
 
-        return np.mean(scores)
+        return np.mean(scores).item()
+
+    def sliding_pesq(self, ref, deg, sr, chunk_sec=20.0, stride_sec=5.0):
+        chunk_len = int(sr * chunk_sec)
+        stride_len = int(sr * stride_sec)
+        total_len = min(len(ref), len(deg))
+
+        if total_len < chunk_len:
+            try:
+                return pesq(sr, ref[:chunk_len], deg[:chunk_len], 'wb')
+            except:
+                return 1.0
+
+        scores = []
+        for start in range(0, total_len - chunk_len + 1, stride_len):
+            ref_chunk = ref[start:start + chunk_len]
+            deg_chunk = deg[start:start + chunk_len]
+
+            if len(ref_chunk) < int(chunk_len * 0.8):
+                break
+
+            try:
+                score = pesq(sr, ref_chunk, deg_chunk, 'wb')
+                scores.append(score)
+            except Exception as e:
+                tqdm.write(f'PESQ error on chunk {start}:{start+chunk_len}: {e}')
+                continue
+
+        return np.mean(scores) if scores else 1.0
     
 @metrics_registry.add_to_registry(name='stoi')
 class STOI:
     def __init__(self, config):
         self.sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
 
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         scores = []
         for real_wav, gen_wav in zip(real_batch['wav'], gen_batch['gen_wav']):
             real_wav_np = real_wav.cpu().numpy()
@@ -88,14 +119,14 @@ class STOI:
             stoi_score = stoi(real_wav_np, gen_wav_np, self.sr, extended=True)
             scores.append(stoi_score)
 
-        return np.mean(scores)
+        return np.mean(scores).item()
 
 @metrics_registry.add_to_registry(name='si_sdr')
 class SISDR:
     def __init__(self, config):
         self.device = config.exp.device
 
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         real_wavs = real_batch['wav'].to(self.device).squeeze(1)
         gen_wavs = gen_batch['gen_wav'].to(self.device).squeeze(1)
 
@@ -107,7 +138,7 @@ class SISDR:
         e_res = (gen_wavs - real_wavs).square().sum(dim=1)
         si_sdr = 10 * torch.log10(e_target / e_res).cpu().numpy()
 
-        return np.mean(si_sdr)   
+        return np.mean(si_sdr).item()
 
 def extract_prefix(prefix, weights):
     result = OrderedDict()
@@ -123,7 +154,7 @@ class MOSNet(ResampleMetric):
         self.model = Wav2Vec2MOS("metrics/weights/wave2vec2mos.pth").to(config.exp.device)
         super().__init__(config, self.model.sample_rate)
 
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         mos_scores = []
 
         for gen_wav in gen_batch['gen_wav']:
@@ -138,7 +169,7 @@ class MOSNet(ResampleMetric):
                 mos_score = self.model(input_values).item()
             mos_scores.append(mos_score)
 
-        return np.mean(mos_scores)
+        return np.mean(mos_scores).item()
 
 @metrics_registry.add_to_registry(name="utmos")
 class UTMOSMetric:
@@ -146,7 +177,7 @@ class UTMOSMetric:
         orig_sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
         self.utmos = UTMOSV2(orig_sr=orig_sr, device=config.exp.device).to(config.exp.device)
     
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
             moses = self.utmos(gen_batch['gen_wav'])
         return torch.mean(moses).item()
@@ -158,7 +189,7 @@ class WVMosMetric(ResampleMetric):
         self.wvmos = WV_MOS(cuda = config.exp.device == 'cuda')
         self.processor = wvmos.wv_mos.Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
 
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
             resampled = self.resample(gen_batch['gen_wav'].squeeze())
             input = self.processor(
@@ -168,7 +199,7 @@ class WVMosMetric(ResampleMetric):
                 sampling_rate=16000
             ).input_values
 
-            score = self.wvmos(input.squeeze(0))
+            score = self.wvmos(input)
             score = torch.mean(score).item()
             
         return score
@@ -182,7 +213,7 @@ class DNSMosMetric:
             device=config.exp.device
         )
     
-    def __call__(self, real_batch, gen_batch):
+    def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
             score = torch.mean(self.dnsmos(gen_batch['gen_wav']))
-        return score
+        return score.item()

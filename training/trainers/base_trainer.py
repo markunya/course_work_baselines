@@ -295,15 +295,13 @@ class BaseTrainer:
     def _compute_metrics(self, batch, gen_batch, metrics_dict, action):
         for metric_name, metric in self.metrics:
             value = metric(batch, gen_batch)
-            if isinstance(value, (np.ndarray, list)) and len(value) == 1:
-                value = value.item() if isinstance(value, np.ndarray) else value[0]
-            elif isinstance(value, torch.Tensor):
-                value = value.item()
+            assert isinstance(value, float), f"Each metric result must be float type, but {metric_name} returned {type(value)}"
 
             key = f'{action}_{metric_name}'
             if key not in metrics_dict:
                 metrics_dict[key] = []
-            metrics_dict[key].append(float(value))
+
+            metrics_dict[key].append(value)
     
     def _avg_computed_metrics(self, metrics_dict, action):
         for metric_name, _ in self.metrics: 
