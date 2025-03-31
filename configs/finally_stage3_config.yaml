@@ -103,6 +103,8 @@ models:
                 warmup_steps: 10
 
         checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_30000_stage2_sr_fix_lmos_0.01.pth"
+        load_optimizer_from_checkpoint: false
+
         args:
           use_upsamplewaveunet: true
         losses:
