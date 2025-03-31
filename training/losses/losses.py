@@ -42,7 +42,7 @@ class L1Loss(nn.L1Loss):
 
 @losses_registry.add_to_registry(name='lmos')
 class LMOSLoss(nn.Module):
-    def __init__(self, target_sr=16000, fft_size=1024, hop_length=256, extraction_layer=6):
+    def __init__(self, target_sr=16000, fft_size=1024, hop_length=256, extraction_layer=0):
         super().__init__()
         self.target_sr = target_sr
         self.fft_size = fft_size
@@ -56,9 +56,10 @@ class LMOSLoss(nn.Module):
         if len(real_wav.shape) == 3:
             real_wav = real_wav.squeeze(1)
         if len(gen_wav.shape) == 3:
-            gen_wav = gen_wav.squeeze(1)        
-        real_features = unwrap_model(wavlm).extract_features(real_wav)[0][self.extraction_layer]
-        gen_features = unwrap_model(wavlm).extract_features(gen_wav)[0][self.extraction_layer]
+            gen_wav = gen_wav.squeeze(1)
+
+        real_features = wavlm(real_wav, output_hidden_states=True).hidden_states[self.extraction_layer]
+        gen_features = wavlm(gen_wav, output_hidden_states=True).hidden_states[self.extraction_layer]
 
         feature_loss = torch.norm(real_features - gen_features, p=2, dim=-1).mean()
 

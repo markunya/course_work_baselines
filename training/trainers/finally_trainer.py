@@ -1,21 +1,18 @@
 import torch
 import torchaudio
 from torch import nn
-from utils.data_utils import mel_spectrogram, debug_msg
-from utils.model_utils import requires_grad, closest_power_of_two, unwrap_model
+from utils.model_utils import requires_grad, unwrap_model
 from training.trainers.base_trainer import BaseTrainer
-
+from transformers import WavLMModel
 from training.trainers.base_trainer import gan_trainers_registry
 
 class FinallyBaseTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.gen_name = "finally_gen"
-        self.wavlm_extraction_layer = 6
+        self.wavlm_extraction_layer = 0
 
-        bundle = torchaudio.pipelines.WAVLM_LARGE
-
-        wavlm = bundle.get_model()
+        wavlm = WavLMModel.from_pretrained("microsoft/wavlm-large", output_hidden_states=True)
 
         n_gpus = torch.cuda.device_count()
         if n_gpus > 1:
@@ -30,9 +27,10 @@ class FinallyBaseTrainer(BaseTrainer):
         if len(wav.shape) == 3:
             wav = wav.squeeze(1)
 
-        features, _ = unwrap_model(self.wavlm).extract_features(wav)
+        outputs = self.wavlm(wav, output_hidden_states=True)
+        hidden_states = outputs.hidden_states
 
-        return features[self.wavlm_extraction_layer]
+        return hidden_states[self.wavlm_extraction_layer]
 
     def synthesize_wavs(self, batch):
         gen = self.models[self.gen_name]
