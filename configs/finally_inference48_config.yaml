@@ -4,7 +4,8 @@ exp:
     device: cuda
     seed: 1234
     use_wandb: true
-    
+    log_batch_size: 15
+
 mel:
     segment_size: 24576
     num_mels: 80
@@ -18,20 +19,22 @@ mel:
     fmax_for_loss: null
 
 data:
-    dataset: finally_dataset
-    dataset_args: {}
-    inference_data_root: "../voxceleb"
-    inference_data_file_path: null
+    dataset: vctk-demand
+    dataset_args:
+        clean_wavs_dir: "clean_testset_wav"
+        noisy_wavs_dir: "noisy_testset_wav"
+    inference_data_root: "../vctk_demand"
+    inference_data_file_path: "datasets/splits/VCTK-Demand_split/test_files.txt"
     workers: 0
 
 inference:
     save_samples: false
     trainer: finally_stage3_trainer
-    metrics: ["utmos", "dnsmos", "wv-mos"]
+    metrics: ["utmos", "dnsmos", "wv-mos", "wb_pesq", "stoi", "si_sdr"]
 
 models:
     finally_gen:
-        checkpoint_path: "/home/mabondarenko_4/course_work_baselines/experiment/checkpoints/finally_gen_checkpoint_8000_stage3_0.1hf.pth"
+        checkpoint_path: "/home/mabondarenko_4/course_work_baselines/experiment/checkpoints/finally_gen_checkpoint_16000_stage3_no_hf.pth"
         args:
           use_upsamplewaveunet: true
     

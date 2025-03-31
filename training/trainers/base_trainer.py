@@ -26,6 +26,7 @@ class BaseTrainer:
     def __init__(self, config):
         self.config = config
         self.device = config.exp.device
+        self.step=1
         if 'train' in config:
             self.start_step = config.train.start_step
             self.step = self.start_step
@@ -315,7 +316,7 @@ class BaseTrainer:
     
     def _avg_computed_metrics(self, metrics_dict, action):
         for metric_name, _ in self.metrics: 
-            metrics_dict[f'{action}_{metric_name}'] = np.mean(metrics_dict[f'{action}_{metric_name}']).value()
+            metrics_dict[f'{action}_{metric_name}'] = np.mean(metrics_dict[f'{action}_{metric_name}'])
 
     def _log_synthesized_batch(self, iterator):
         for _ in range(self.config.exp.log_batch_size):

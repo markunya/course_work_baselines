@@ -489,3 +489,68 @@ class FinallyDataset(Dataset):
     
     def __len__(self):
         return len(self.files_list)
+
+@datasets_registry.add_to_registry(name='vctk-demand')
+class VCTKDemandDataset(Dataset):
+    def __init__(
+        self,
+        root,
+        files_list_path,
+        mel_conf,
+        noisy_wavs_dir,
+        clean_wavs_dir,
+        split=False,
+        eval=False
+    ):
+        assert not split, "This dataset don\'t support split"
+
+        if clean_wavs_dir:
+            clean_wavs_dir = os.path.join(root, clean_wavs_dir)
+        noisy_wavs_dir = os.path.join(root, noisy_wavs_dir)
+        self.files_list = read_file_list(files_list_path)
+
+        self.clean_wavs_dir = clean_wavs_dir
+        self.noisy_wavs_dir = noisy_wavs_dir
+        self.in_sr = mel_conf.in_sr
+        self.out_sr = mel_conf.out_sr
+        self.resamplers = {}
+
+    def __getitem__(self, index):
+        filename = self.files_list[index]
+        clean_wav, clean_sr = torchaudio.load(os.path.join(self.clean_wavs_dir, filename))
+        noisy_wav, noisy_sr = torchaudio.load(os.path.join(self.noisy_wavs_dir, filename))
+
+        assert clean_wav.shape[-1] == noisy_wav.shape[-1], "Lengths must be equal for noisy and clean"    
+
+        base = 3072
+        remainder = noisy_wav.shape[-1] % base
+        pad_size = (base - remainder) if remainder != 0 else 0
+        clean_wav = torch.nn.functional.pad(clean_wav, (0, pad_size))    
+        noisy_wav = torch.nn.functional.pad(noisy_wav, (0, pad_size))
+
+        if self.in_sr != noisy_sr:
+            key = (noisy_sr, self.in_sr)
+            if key not in self.resamplers:
+                self.resamplers[key] = torchaudio.transforms.Resample(
+                                        orig_freq=noisy_sr,
+                                        new_freq=self.in_sr
+                                    )
+            noisy_wav = self.resamplers[key](noisy_wav)
+        
+        if self.out_sr != clean_sr:
+            key = (clean_sr, self.out_sr)
+            if key not in self.resamplers:
+                self.resamplers[key] = torchaudio.transforms.Resample(
+                                        orig_freq=clean_sr,
+                                        new_freq=self.in_sr
+                                    )
+            clean_wav = self.resamplers[key](clean_wav)
+
+        return {
+            'input_wav': noisy_wav.squeeze(),
+            'wav': clean_wav.squeeze(),
+            'name': filename
+        }
+
+    def __len__(self):
+        return len(self.files_list)
