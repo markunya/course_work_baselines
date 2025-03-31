@@ -10,7 +10,7 @@ if __name__ == "__main__":
     config = OmegaConf.merge(config, conf_cli)
     setup_seed(config.exp.seed)
         
-    trainer = gan_trainers_registry[config.train.trainer](config)
+    trainer = gan_trainers_registry[config.inference.trainer](config)
 
     trainer.setup_inference()
     trainer.inference()

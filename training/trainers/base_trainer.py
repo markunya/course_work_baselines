@@ -354,14 +354,15 @@ class BaseTrainer:
                 in_sr = self.config.mel.in_sr
                 out_sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else in_sr
                 
-                if 'input_wav' in batch:
-                    save_wavs_to_dir(batch['input_wav'], batch['name'],
-                                    os.path.join(run_inf_dir, 'input'), in_sr)
-                if 'wav' in batch:
-                    save_wavs_to_dir(batch['wav'], batch['name'],
-                                    os.path.join(run_inf_dir, 'ground_truth'), out_sr)
-                save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
-                                os.path.join(run_inf_dir, 'generated'), out_sr)
+                if self.config.inference.save_samples:
+                    if 'input_wav' in batch:
+                        save_wavs_to_dir(batch['input_wav'], batch['name'],
+                                        os.path.join(run_inf_dir, 'input'), in_sr)
+                    if 'wav' in batch:
+                        save_wavs_to_dir(batch['wav'], batch['name'],
+                                        os.path.join(run_inf_dir, 'ground_truth'), out_sr)
+                    save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
+                                    os.path.join(run_inf_dir, 'generated'), out_sr)
 
                 self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
 

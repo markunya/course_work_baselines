@@ -1,9 +1,9 @@
 exp:
     project_name: finally
     exp_dir: experiment
-    device: cpu
+    device: cuda
     seed: 1234
-    use_wandb: false
+    use_wandb: true
     
 mel:
     segment_size: 24576
@@ -25,12 +25,13 @@ data:
     workers: 0
 
 inference:
+    save_samples: false
     trainer: finally_stage3_trainer
     metrics: ["utmos", "dnsmos", "wv-mos"]
 
 models:
     finally_gen:
-        checkpoint_path: "/home/mabondarenko_4/course_work_baselines/experiment/checkpoints/finally_gen_checkpoint_12000_stage3_no_hf.pth"
+        checkpoint_path: "/home/mabondarenko_4/course_work_baselines/experiment/checkpoints/finally_gen_checkpoint_8000_stage3_0.1hf.pth"
         args:
           use_upsamplewaveunet: true
     

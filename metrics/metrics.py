@@ -186,19 +186,21 @@ class UTMOSMetric:
 class WVMosMetric(ResampleMetric):
     def __init__(self, config):
         super().__init__(config, 16000)
-        self.wvmos = WV_MOS(cuda = config.exp.device == 'cuda')
+        cuda = config.exp.device == 'cuda'
+        self.wvmos = WV_MOS(cuda = cuda)
         self.processor = wvmos.wv_mos.Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
 
     def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
             resampled = self.resample(gen_batch['gen_wav'].squeeze())
+
             input = self.processor(
                 resampled,
                 return_tensors="pt",
                 padding=True,
                 sampling_rate=16000
-            ).input_values
-
+            ).input_values.to(resampled.device)
+    
             score = self.wvmos(input)
             score = torch.mean(score).item()
             
