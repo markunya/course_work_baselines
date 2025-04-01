@@ -13,6 +13,7 @@ mel:
     hop_size: 256
     win_size: 1024
     in_sr: 16000
+    out_sr: 16000
     fmin: 0
     fmax: 8000
     fmax_for_loss: null
@@ -69,20 +70,20 @@ data:
     inference_data_root: "../LibriTTS_R"
     inference_data_file_path: "datasets/splits/LibriTTS-R_split/test_files.txt"
     train_batch_size: 32
-    workers: 16
+    workers: 8
 
 train:
     trainer: finally_stage1_trainer
-    val_metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
+    val_metrics: []
     start_step: 1
     steps: 100000
     log_step: 250
     checkpoint_step: 10000
-    val_step: 5000
+    val_step: 10000
 
 inference:
     trainer: finally_stage1_trainer
-    metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
+    metrics: []
 
 models:
     finally_gen:

@@ -13,6 +13,7 @@ mel:
     hop_size: 256
     win_size: 1024
     in_sr: 16000
+    out_sr: 16000
     fmin: 0
     fmax: 8000
     fmax_for_loss: null
@@ -73,16 +74,16 @@ data:
 
 train:
     trainer: finally_stage2_trainer
-    val_metrics: []
+    val_metrics: ["wb_pesq", "stoi", "si_sdr", "wv-mos", "utmos", dnsmos]
     start_step: 1
-    steps: 30000
+    steps: 40000
     log_step: 250
     checkpoint_step: 10000
-    val_step: 7500
+    val_step: 10000
 
 inference:
     trainer: finally_stage2_trainer
-    metrics: ["wb_pesq", "stoi", "si_sdr", "mosnet"]
+    metrics: ["wb_pesq", "stoi", "si_sdr"]
 
 models:
     finally_gen:
@@ -101,13 +102,13 @@ models:
                 step_period: 200
                 warmup_steps: 10
 
-        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_stage1_sr_fix.pth"
+        checkpoint_path: null
         load_optimizer_from_checkpoint: false
         
         args: {}
         losses:
             lmos:
-              coef: 0.01
+              coef: 20.0
             gen_loss:
               coef: 0.4
             feature_loss:
