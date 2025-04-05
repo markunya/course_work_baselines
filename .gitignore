@@ -161,4 +161,5 @@ tester.ipynb
 #datasets
 VCTK/
 
+metrics/weights
 draft_configs

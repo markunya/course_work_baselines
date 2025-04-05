@@ -27,7 +27,7 @@ class FinallyBaseTrainer(BaseTrainer):
         if len(wav.shape) == 3:
             wav = wav.squeeze(1)
 
-        outputs = self.wavlm(wav, output_hidden_states=True)
+        outputs = self.wavlm(input_values=wav, output_hidden_states=True)
         hidden_states = outputs.hidden_states
 
         return hidden_states[self.wavlm_extraction_layer]

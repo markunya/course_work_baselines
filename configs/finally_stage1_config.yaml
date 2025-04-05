@@ -79,7 +79,7 @@ train:
     steps: 100000
     log_step: 250
     checkpoint_step: 10000
-    val_step: 10000
+    val_step: 4000
 
 inference:
     trainer: finally_stage1_trainer
