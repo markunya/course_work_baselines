@@ -76,7 +76,7 @@ train:
     trainer: finally_stage2_trainer
     val_metrics: ["wb_pesq", "stoi", "si_sdr", "wv-mos", "utmos", dnsmos]
     start_step: 1
-    steps: 40000
+    steps: 30000
     log_step: 250
     checkpoint_step: 10000
     val_step: 5000
@@ -102,13 +102,13 @@ models:
                 step_period: 200
                 warmup_steps: 10
 
-        checkpoint_path: null
+        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_stage1_wavlm0.pth"
         load_optimizer_from_checkpoint: false
         
         args: {}
         losses:
             lmos:
-              coef: 0.02
+              coef: 1.0
             gen_loss:
               coef: 0.4
             feature_loss:

@@ -1,5 +1,6 @@
 import torch
 import torchaudio
+import torch.nn.functional as F
 import torchaudio.transforms as T
 from torch import nn
 from .loss_builder import losses_registry
@@ -61,11 +62,11 @@ class LMOSLoss(nn.Module):
         real_features = wavlm(real_wav, output_hidden_states=True).hidden_states[self.extraction_layer]
         gen_features = wavlm(gen_wav, output_hidden_states=True).hidden_states[self.extraction_layer]
 
-        feature_loss = torch.norm(real_features - gen_features, p=2, dim=-1).mean()
+        feature_loss = F.mse_loss(real_features, gen_features)
 
         real_stft = self.stft(real_wav)
         gen_stft = self.stft(gen_wav)
-        stft_loss = torch.norm(real_stft - gen_stft, p=1, dim=-1).mean()
+        stft_loss = F.l1_loss(real_stft, gen_stft)
 
         lmos_loss = 100 * feature_loss + stft_loss
         return lmos_loss
