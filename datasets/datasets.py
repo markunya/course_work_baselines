@@ -238,6 +238,7 @@ class AugmentedDataset(Dataset):
         seed=42,
         eval=False,
         split=True,
+        silence_period=0,
         augs_conf=tuple()
     ):
         self.root = root
@@ -249,6 +250,7 @@ class AugmentedDataset(Dataset):
         self.eval = eval
         self.seed = seed
         self.augmentations = self._get_augs_from_conf(augs_conf)
+        self.silence_period = silence_period
         self.resamplers = {}
 
     def _get_augs_from_conf(self, augs_conf):
@@ -273,6 +275,29 @@ class AugmentedDataset(Dataset):
                 tqdm.write(f"Failed to initiallize {name}: {e}")
 
         return augs
+
+    def _return_silence_batch(self, index):
+        if self.eval or self.silence_period <= 0 or index % self.silence_period != 0:
+            return (False, None)
+
+        amplitude = np.random.normal(loc=0.0, scale=0.1)
+        silence = np.random.normal(loc=0.0, scale=np.abs(amplitude), size=self.segment_size)
+        silence = torch.from_numpy(silence)
+
+        augmented = self._apply_augs(silence[None], index).squeeze()
+        cutted = augmented[:self.segment_size]
+        normalized = self._safe_normalize(cutted)
+
+        scale = float(min(np.abs(np.random.normal(0, WAV_AFTERNORM_COEF/3)), WAV_AFTERNORM_COEF))
+        input_wav = normalized * scale
+
+        batch = {
+            'input_wav': input_wav.to(dtype=torch.float),
+            'wav': torch.zeros_like(normalized, dtype=torch.float),
+            'name': 'silence'
+        }
+        return (True, batch)
+        
 
     def _apply_augs(self, wav, index):
         result = wav.clone()
@@ -304,6 +329,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
+        silence_period=0,
         augs_conf=tuple()
     ):
         super().__init__(
@@ -313,11 +339,16 @@ class AugmentedLibriTTSR(AugmentedDataset):
             seed=seed,
             eval=eval,
             split=split,
-            augs_conf=augs_conf
+            augs_conf=augs_conf,
+            silence_period=silence_period
         )
 
     
     def __getitem__(self, index):
+        return_silence, silence_batch = self._return_silence_batch(index)
+        if return_silence:
+            return silence_batch
+
         filename = self.files_list[index]
 
         wav, sr = torchaudio.load(os.path.join(self.root, filename))            
