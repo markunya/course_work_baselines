@@ -43,13 +43,12 @@ class L1Loss(nn.L1Loss):
 
 @losses_registry.add_to_registry(name='lmos')
 class LMOSLoss(nn.Module):
-    def __init__(self, target_sr=16000, fft_size=1024, hop_length=256, extraction_layer=0):
+    def __init__(self, target_sr=16000, fft_size=1024, hop_length=256):
         super().__init__()
         self.target_sr = target_sr
         self.fft_size = fft_size
         self.hop_length = hop_length
 
-        self.extraction_layer = extraction_layer
         self.stft = T.Spectrogram(n_fft=fft_size, hop_length=hop_length, power=1)
 
     def forward(self, real_wav, gen_wav, wavlm):
@@ -59,8 +58,8 @@ class LMOSLoss(nn.Module):
         if len(gen_wav.shape) == 3:
             gen_wav = gen_wav.squeeze(1)
 
-        real_features = wavlm(real_wav, output_hidden_states=True).hidden_states[self.extraction_layer]
-        gen_features = wavlm(gen_wav, output_hidden_states=True).hidden_states[self.extraction_layer]
+        real_features = wavlm(real_wav, output_hidden_states=True).extract_features
+        gen_features = wavlm(gen_wav, output_hidden_states=True).extract_features
 
         feature_loss = F.mse_loss(real_features, gen_features)
 

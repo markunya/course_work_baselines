@@ -280,7 +280,7 @@ class AugmentedDataset(Dataset):
         if self.eval or self.silence_period <= 0 or index % self.silence_period != 0:
             return (False, None)
 
-        amplitude = np.random.normal(loc=0.0, scale=0.1)
+        amplitude = np.random.normal(loc=0.0, scale=0.01)
         silence = np.random.normal(loc=0.0, scale=np.abs(amplitude), size=self.segment_size)
         silence = torch.from_numpy(silence)
 
@@ -288,7 +288,8 @@ class AugmentedDataset(Dataset):
         cutted = augmented[:self.segment_size]
         normalized = self._safe_normalize(cutted)
 
-        scale = float(min(np.abs(np.random.normal(0, WAV_AFTERNORM_COEF/3)), WAV_AFTERNORM_COEF))
+        rand_factor = np.random.normal(0, scale=np.sqrt(WAV_AFTERNORM_COEF)/100)
+        scale = float(min(np.abs(rand_factor), WAV_AFTERNORM_COEF))
         input_wav = normalized * scale
 
         batch = {

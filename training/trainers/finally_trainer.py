@@ -10,7 +10,6 @@ class FinallyBaseTrainer(BaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.gen_name = "finally_gen"
-        self.wavlm_extraction_layer = 0
 
         wavlm = WavLMModel.from_pretrained("microsoft/wavlm-large", output_hidden_states=True)
 
@@ -28,9 +27,9 @@ class FinallyBaseTrainer(BaseTrainer):
             wav = wav.squeeze(1)
 
         outputs = self.wavlm(input_values=wav, output_hidden_states=True)
-        hidden_states = outputs.hidden_states
+        features = outputs.extract_features
 
-        return hidden_states[self.wavlm_extraction_layer]
+        return features
 
     def synthesize_wavs(self, batch):
         gen = self.models[self.gen_name]

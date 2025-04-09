@@ -21,6 +21,7 @@ mel:
 data:
     dataset: augmented_libritts-r
     dataset_args:
+        silence_period: 6
         augs_conf:
           - name: noise
             args:
