@@ -117,8 +117,8 @@ class BaseTrainer:
                 f'load_optimizer_from_checkpoint for model {model_name} set to false,' +
                 'initializing optimizer from scratch'
             )
-
-
+            return optimizer
+        
         checkpoint_path = model_config.get('checkpoint_path')
 
         if checkpoint_path is not None and os.path.isfile(checkpoint_path):
