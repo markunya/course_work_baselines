@@ -275,29 +275,42 @@ class AugmentedDataset(Dataset):
                 tqdm.write(f"Failed to initiallize {name}: {e}")
 
         return augs
+    
+    def _random_fade_mask(self, length, min_plateau_ratio=0.2, max_plateau_ratio=0.8) -> torch.Tensor:        
+        plateau_ratio = torch.empty(1).uniform_(min_plateau_ratio, max_plateau_ratio).item()
+        plateau_width = int(length * plateau_ratio)
+        side_len = (length - plateau_width) // 2
 
-    def _return_silence_batch(self, index):
+        alpha_left = torch.exp(torch.empty(1).uniform_(math.log(0.25), math.log(4.0))).item()
+        alpha_right = torch.exp(torch.empty(1).uniform_(math.log(0.25), math.log(4.0))).item()
+
+        x_left = torch.linspace(0.0, 1.0, steps=side_len)
+        x_right = torch.linspace(1.0, 0.0, steps=length - side_len - plateau_width)
+        fade_left = 1.0 - x_left.pow(alpha_left)
+        fade_right = 1.0 - x_right.pow(alpha_right)
+
+        plateau = torch.zeros(plateau_width)
+
+        mask = torch.cat([fade_left, plateau, fade_right], dim=0)
+        return mask
+
+    def _mix_with_silence(self, wav, index):
         if self.eval or self.silence_period <= 0 or index % self.silence_period != 0:
-            return (False, None)
+            return wav
+        
+        _, L = wav.shape
 
-        amplitude = np.random.normal(loc=0.0, scale=0.01)
-        silence = np.random.normal(loc=0.0, scale=np.abs(amplitude), size=self.segment_size)
-        silence = torch.from_numpy(silence)
+        silence_ratio = torch.empty(1).uniform_(0.0, 1.0).item()
+        silence_len = int(L * silence_ratio)
+        start = torch.randint(low=0, high=L - silence_len + 1, size=(1,)).item()
+        end = start + silence_len
 
-        augmented = self._apply_augs(silence[None], index).squeeze()
-        cutted = augmented[:self.segment_size]
-        normalized = self._safe_normalize(cutted)
+        fade_mask = self._random_fade_mask(silence_len)
 
-        rand_factor = np.random.normal(0, scale=np.sqrt(WAV_AFTERNORM_COEF)/100)
-        scale = float(min(np.abs(rand_factor), WAV_AFTERNORM_COEF))
-        input_wav = normalized * scale
+        mixed = wav.clone()
+        mixed[:, start:end] = mixed[:, start:end] * fade_mask
 
-        batch = {
-            'input_wav': input_wav.to(dtype=torch.float),
-            'wav': torch.zeros_like(normalized, dtype=torch.float),
-            'name': 'silence'
-        }
-        return (True, batch)
+        return mixed
         
 
     def _apply_augs(self, wav, index):
@@ -346,10 +359,6 @@ class AugmentedLibriTTSR(AugmentedDataset):
 
     
     def __getitem__(self, index):
-        return_silence, silence_batch = self._return_silence_batch(index)
-        if return_silence:
-            return silence_batch
-
         filename = self.files_list[index]
 
         wav, sr = torchaudio.load(os.path.join(self.root, filename))            
@@ -365,11 +374,13 @@ class AugmentedLibriTTSR(AugmentedDataset):
             wav = wav.numpy().squeeze(0)
 
         (wav,) = split_audios([wav], self.segment_size, self.split)
+        wav = torch.from_numpy(wav[None])
+        wav = self._mix_with_silence(wav, index)
 
-        augmented = self._apply_augs(torch.from_numpy(wav[None]), index).squeeze()
+        augmented = self._apply_augs(wav, index).squeeze()
 
         input_wav = self._safe_normalize(augmented)[None] * WAV_AFTERNORM_COEF
-        target_wav = self._safe_normalize(torch.from_numpy(wav)) * WAV_AFTERNORM_COEF
+        target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
 
         input_wav = input_wav[:,:target_wav.shape[-1]]
         pad_size = closest_power_of_two(target_wav.shape[-1]) - target_wav.shape[-1]
@@ -378,6 +389,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
         target_wav = torch.nn.functional.pad(target_wav, (0, pad_size)).squeeze()
 
         assert input_wav.shape == target_wav.shape
+
         return {
             'input_wav': input_wav,
             'wav': target_wav,
