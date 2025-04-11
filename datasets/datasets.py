@@ -280,13 +280,13 @@ class AugmentedDataset(Dataset):
         if self.eval:
             return wav
         
-        sz = int(wav.shape[-1] * self.silence_ratio)
+        sz = int(wav.shape[-1] * self.silence_ratio / 2)
         wav = np.concatenate(
             (np.zeros(sz), wav, np.zeros(sz)),
             axis=-1,
             dtype=np.float32
         )
-        
+
         return wav
         
 
