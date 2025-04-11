@@ -238,7 +238,7 @@ class AugmentedDataset(Dataset):
         seed=42,
         eval=False,
         split=True,
-        silence_period=0,
+        silence_ratio=0.3,
         augs_conf=tuple()
     ):
         self.root = root
@@ -250,7 +250,7 @@ class AugmentedDataset(Dataset):
         self.eval = eval
         self.seed = seed
         self.augmentations = self._get_augs_from_conf(augs_conf)
-        self.silence_period = silence_period
+        self.silence_ratio = silence_ratio
         self.resamplers = {}
 
     def _get_augs_from_conf(self, augs_conf):
@@ -276,41 +276,18 @@ class AugmentedDataset(Dataset):
 
         return augs
     
-    def _random_fade_mask(self, length, min_plateau_ratio=0.2, max_plateau_ratio=0.8) -> torch.Tensor:        
-        plateau_ratio = torch.empty(1).uniform_(min_plateau_ratio, max_plateau_ratio).item()
-        plateau_width = int(length * plateau_ratio)
-        side_len = (length - plateau_width) // 2
-
-        alpha_left = torch.exp(torch.empty(1).uniform_(math.log(0.25), math.log(4.0))).item()
-        alpha_right = torch.exp(torch.empty(1).uniform_(math.log(0.25), math.log(4.0))).item()
-
-        x_left = torch.linspace(0.0, 1.0, steps=side_len)
-        x_right = torch.linspace(1.0, 0.0, steps=length - side_len - plateau_width)
-        fade_left = 1.0 - x_left.pow(alpha_left)
-        fade_right = 1.0 - x_right.pow(alpha_right)
-
-        plateau = torch.zeros(plateau_width)
-
-        mask = torch.cat([fade_left, plateau, fade_right], dim=0)
-        return mask
-
-    def _mix_with_silence(self, wav, index):
-        if self.eval or self.silence_period <= 0 or index % self.silence_period != 0:
+    def _add_silence(self, wav):
+        if self.eval:
             return wav
         
-        _, L = wav.shape
-
-        silence_ratio = torch.empty(1).uniform_(0.0, 1.0).item()
-        silence_len = int(L * silence_ratio)
-        start = torch.randint(low=0, high=L - silence_len + 1, size=(1,)).item()
-        end = start + silence_len
-
-        fade_mask = self._random_fade_mask(silence_len)
-
-        mixed = wav.clone()
-        mixed[:, start:end] = mixed[:, start:end] * fade_mask
-
-        return mixed
+        sz = int(wav.shape[-1] * self.silence_ratio)
+        wav = np.concatenate(
+            (np.zeros(sz), wav, np.zeros(sz)),
+            axis=-1,
+            dtype=np.float32
+        )
+        
+        return wav
         
 
     def _apply_augs(self, wav, index):
@@ -343,7 +320,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
-        silence_period=0,
+        silence_ratio=0.3,
         augs_conf=tuple()
     ):
         super().__init__(
@@ -354,7 +331,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
             eval=eval,
             split=split,
             augs_conf=augs_conf,
-            silence_period=silence_period
+            silence_ratio=silence_ratio
         )
 
     
@@ -373,9 +350,9 @@ class AugmentedLibriTTSR(AugmentedDataset):
         else:
             wav = wav.numpy().squeeze(0)
 
+        wav = self._add_silence(wav)
         (wav,) = split_audios([wav], self.segment_size, self.split)
         wav = torch.from_numpy(wav[None])
-        wav = self._mix_with_silence(wav, index)
 
         augmented = self._apply_augs(wav, index).squeeze()
 
