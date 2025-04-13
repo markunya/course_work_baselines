@@ -9,10 +9,9 @@ from torch import nn
 from utils.data_utils import mel_spectrogram
 from utils.class_registry import ClassRegistry
 from collections import OrderedDict
-from models.metric_models import Wav2Vec2MOS, UTMOSV2
+from models.metric_models import Wav2Vec2MOS, UTMOSV2, WV_MOS, DNSMOSPredictor
 import wvmos
 from tqdm import tqdm
-from models.metric_models import WV_MOS
 from torchmetrics.audio.dnsmos import DeepNoiseSuppressionMeanOpinionScore
 
 metrics_registry = ClassRegistry()
@@ -51,7 +50,7 @@ class L1MelDiff:
                                     self.sampling_rate, self.hop_size, self.win_size,
                                     self.fmin, self.fmax, center=False)
         score = self.l1_loss(real_mel, gen_mel).item()
-        return score
+        return float(score)
 
 @metrics_registry.add_to_registry(name='wb_pesq')
 class WBPesq(ResampleMetric):
@@ -75,7 +74,7 @@ class WBPesq(ResampleMetric):
 
             scores.append(pesq_score)
 
-        return np.mean(scores).item()
+        return float(np.mean(scores).item())
 
     def sliding_pesq(self, ref, deg, sr, chunk_sec=20.0, stride_sec=5.0):
         chunk_len = int(sr * chunk_sec)
@@ -103,7 +102,7 @@ class WBPesq(ResampleMetric):
                 tqdm.write(f'PESQ error on chunk {start}:{start+chunk_len}: {e}')
                 continue
 
-        return np.mean(scores) if scores else 1.0
+        return float(np.mean(scores)) if scores else 1.0
     
 @metrics_registry.add_to_registry(name='stoi')
 class STOI:
@@ -119,7 +118,7 @@ class STOI:
             stoi_score = stoi(real_wav_np, gen_wav_np, self.sr, extended=True)
             scores.append(stoi_score)
 
-        return np.mean(scores).item()
+        return float(np.mean(scores).item())
 
 @metrics_registry.add_to_registry(name='si_sdr')
 class SISDR:
@@ -138,7 +137,7 @@ class SISDR:
         e_res = (gen_wavs - real_wavs).square().sum(dim=1)
         si_sdr = 10 * torch.log10(e_target / e_res).cpu().numpy()
 
-        return np.mean(si_sdr).item()
+        return float(np.mean(si_sdr).item())
 
 def extract_prefix(prefix, weights):
     result = OrderedDict()
@@ -169,7 +168,7 @@ class MOSNet(ResampleMetric):
                 mos_score = self.model(input_values).item()
             mos_scores.append(mos_score)
 
-        return np.mean(mos_scores).item()
+        return float(np.mean(mos_scores).item())
 
 @metrics_registry.add_to_registry(name="utmos")
 class UTMOSMetric:
@@ -180,7 +179,7 @@ class UTMOSMetric:
     def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
             moses = self.utmos(gen_batch['gen_wav'])
-        return torch.mean(moses).item()
+        return float(torch.mean(moses).item())
 
 @metrics_registry.add_to_registry(name="wv-mos")
 class WVMosMetric(ResampleMetric):
@@ -204,9 +203,9 @@ class WVMosMetric(ResampleMetric):
             score = self.wvmos(input)
             score = torch.mean(score).item()
             
-        return score
+        return float(score)
 
-@metrics_registry.add_to_registry(name="dnsmos")
+@metrics_registry.add_to_registry(name="legacy_dnsmos")
 class DNSMosMetric:
     def __init__(self, config):
         self.dnsmos = DeepNoiseSuppressionMeanOpinionScore(
@@ -218,4 +217,23 @@ class DNSMosMetric:
     def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
             score = torch.mean(self.dnsmos(gen_batch['gen_wav']))
-        return score.item()
+        return float(score.item())
+
+@metrics_registry.add_to_registry(name="dnsmos")
+class DNSMosP835Metric:
+    def __init__(self, config):
+        self.predictor = DNSMOSPredictor(
+            'metrics/weights/sig_bak_ovr.onnx',
+            'metrics/weights/model_v8.onnx'
+        )
+        self.sr = config.mel.out_sr
+    
+    def __call__(self, real_batch, gen_batch) -> float:
+        ovrl_scores = []
+        for gen_wav in gen_batch['gen_wav']:
+            d = self.predictor(
+                gen_wav.cpu().numpy().squeeze(),
+                self.sr, is_personalized_MOS=False
+            )
+            ovrl_scores.append(d['OVRL'])
+        return float(np.mean(ovrl_scores))
