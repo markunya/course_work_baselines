@@ -160,14 +160,20 @@ class RandomVibrato:
     def __call__(self, wav, seed=None):
         rnd = get_rnd(seed)
         freq = rnd.randint(*self.freq_range)
+
         if freq not in self.effector_cache:
             self.effector_cache[freq] = AudioEffector(effect=f"vibrato=f={freq}", pad_end=False)
-        return self.effector_cache[freq].apply(wav.T, self.sr).T.clamp(-1.0,1.0)
+
+        out = self.effector_cache[freq].apply(wav.T, self.sr).T.clamp(-1.0,1.0)
+        out = out.clamp(-1.0, 1.0)
+        out[torch.isnan(out)] = 0.0
+        out[torch.isinf(out)] = 0.0
+        return out
 
 @augmentations_registry.add_to_registry(name='codec')
 class RandomCodec:
     def __init__(self, sr, codec_types=("mp3", "ogg"), 
-                ogg_encoders=("vorbis", "opus"),
+                ogg_encoders=("libvorbis", "libopus"),
                 mp3_bitrate_range=(4000, 16000), prob=1.0):
         super().__init__()
         self.sr = sr

@@ -1,0 +1,110 @@
+exp:
+    project_name: finally
+    exp_dir: experiment
+    device: cuda
+    seed: 1234
+    use_wandb: true
+    log_batch_size: 15
+    
+mel:
+    segment_size: 8192
+    num_mels: 80
+    n_fft: 1024
+    hop_size: 256
+    win_size: 1024
+    in_sr: 16000
+    out_sr: 16000
+    fmin: 0
+    fmax: 8000
+    fmax_for_loss: null
+
+data:
+    dataset: augmented_libritts-r
+    dataset_args:
+        silence_ratio: 0.3
+        augs_conf:
+          - name: noise
+            args:
+              root: "../datasets_fullband/noise_fullband"
+              noise_files_path:
+                train: "datasets/splits/DNS_noise_split/train_files.txt"
+                val: "datasets/splits/DNS_noise_split/val_files.txt"
+
+          - name: impulse_response
+            args:
+              root: "../datasets_fullband/micro_irs"
+              ir_files_path:
+                train: "datasets/splits/micro_ir_split/train_files.txt"
+                val: "datasets/splits/micro_ir_split/val_files.txt"
+
+          - name: impulse_response
+            args:
+              root: "../datasets_fullband/room_irs"
+              ir_files_path:
+                train: "datasets/splits/DNS_ir_split/train_files.txt"
+                val: "datasets/splits/DNS_ir_split/val_files.txt"
+              prob: 0.8
+
+          - name: acrusher
+            args:
+              prob: 0.25
+
+          - name: crystalizer
+            args:
+              prob: 0.4
+
+          - name: vibrato
+            args:
+              prob: 0.15
+
+          - name: flanger
+            args:
+              prob: 0.15
+
+          - name: codec
+            args:
+              prob: 0.45
+
+    trainval_data_root: "../LibriTTS_R"
+    train_data_file_path: "datasets/splits/LibriTTS-R_split/train_files.txt"
+    val_data_file_path: "datasets/splits/LibriTTS-R_split/val_files.txt"
+    inference_data_root: "../LibriTTS_R"
+    inference_data_file_path: "datasets/splits/LibriTTS-R_split/test_files.txt"
+    train_batch_size: 32
+    workers: 8
+
+train:
+    trainer: finally_stage1_trainer
+    val_metrics: []
+    start_step: 1
+    steps: 100000
+    log_step: 250
+    checkpoint_step: 10000
+    val_step: 4000
+
+inference:
+    trainer: finally_stage1_trainer
+    metrics: []
+
+models:
+    finally_gen:
+        optimizer:
+          name: adamW
+          args:
+              lr: 0.0002
+              beta1: 0.8
+              beta2: 0.99
+
+        scheduler:
+            name: exponential
+            args:
+                gamma: 0.996
+                reduce_time: "period"
+                step_period: 200
+
+        checkpoint_path: null
+        args: {}
+        losses:
+            lmos:
+              coef: 1.0
+    

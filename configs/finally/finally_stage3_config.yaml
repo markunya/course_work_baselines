@@ -1,0 +1,143 @@
+exp:
+    project_name: finally
+    exp_dir: experiment
+    device: cuda
+    seed: 1234
+    use_wandb: true
+    log_batch_size: 15
+    
+mel:
+    segment_size: 24576
+    num_mels: 80
+    n_fft: 1024
+    hop_size: 256
+    win_size: 1024
+    in_sr: 16000
+    out_sr: 48000
+    fmin: 0
+    fmax: 8000
+    fmax_for_loss: null
+
+data:
+    dataset: augmented_daps
+    dataset_args:
+        augs_conf:
+          - name: noise
+            args:
+              root: "../datasets_fullband/noise_fullband"
+              noise_files_path:
+                train: "datasets/splits/DNS_noise_split/train_files.txt"
+                val: "datasets/splits/DNS_noise_split/val_files.txt"
+
+          - name: impulse_response
+            args:
+              root: "../datasets_fullband/micro_irs"
+              ir_files_path:
+                train: "datasets/splits/micro_ir_split/train_files.txt"
+                val: "datasets/splits/micro_ir_split/val_files.txt"
+
+          - name: impulse_response
+            args:
+              root: "../datasets_fullband/room_irs"
+              ir_files_path:
+                train: "datasets/splits/DNS_ir_split/train_files.txt"
+                val: "datasets/splits/DNS_ir_split/val_files.txt"
+              prob: 0.8
+
+          - name: acrusher
+            args:
+              prob: 0.25
+
+          - name: crystalizer
+            args:
+              prob: 0.4
+
+          - name: vibrato
+            args:
+              prob: 0.15
+
+          - name: flanger
+            args:
+              prob: 0.15
+
+          - name: codec
+            args:
+              prob: 0.45
+
+    trainval_data_root: "../daps"
+    train_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    val_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    inference_data_root: "../daps"
+    inference_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    train_batch_size: 32
+    workers: 16
+
+train:
+    trainer: finally_stage3_trainer
+    val_metrics: ["utmos", "dnsmos", "wv-mos", "wb_pesq", "stoi", "si_sdr"]
+    start_step: 1
+    steps: 40000
+    log_step: 250
+    checkpoint_step: 10000
+    val_step: 5000
+
+inference:
+    trainer: finally_stage3_trainer
+    metrics: ["utmos", "dnsmos", "wv-mos"]
+
+models:
+    finally_gen:
+        optimizer:
+          name: adamW
+          args:
+              lr: 0.0002
+              beta1: 0.8
+              beta2: 0.99
+
+        scheduler:
+            name: exponential
+            args:
+                gamma: 0.995
+                reduce_time: "period"
+                step_period: 200
+                warmup_steps: 10
+
+        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_30000_stage2_sr_fix_lmos_0.01.pth"
+        load_optimizer_from_checkpoint: false
+
+        args:
+          use_upsamplewaveunet: true
+        losses:
+            lmos:
+              coef: 0.005
+            gen_loss:
+              coef: 5.0
+            feature_loss:
+              coef: 15.0
+            utmos:
+              coef: 20.0
+            pesq:
+              coef: 2.0
+    
+    ms-stft_disc:
+      optimizer:
+          name: adamW
+          args:
+              lr: 0.0002111
+              beta1: 0.5
+              beta2: 0.999
+
+      scheduler:
+          name: exponential
+          args:
+              gamma: 0.995
+              reduce_time: "period"
+              step_period: 200
+
+      checkpoint_path: null
+      args:
+          filters: 32
+      losses:
+          disc_loss:
+            coef: 1.0
+    

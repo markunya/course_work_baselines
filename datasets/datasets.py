@@ -238,7 +238,7 @@ class AugmentedDataset(Dataset):
         seed=42,
         eval=False,
         split=True,
-        silence_ratio=0.3,
+        silence_ratio=0.2,
         augs_conf=tuple()
     ):
         self.root = root
@@ -281,10 +281,9 @@ class AugmentedDataset(Dataset):
             return wav
         
         sz = int(wav.shape[-1] * self.silence_ratio / 2)
-        wav = np.concatenate(
-            (np.zeros(sz), wav, np.zeros(sz)),
-            axis=-1,
-            dtype=np.float32
+        wav = torch.concatenate(
+            (torch.zeros(1, sz), wav, torch.zeros(1, sz)),
+            dim=-1,
         )
 
         return wav
@@ -294,18 +293,6 @@ class AugmentedDataset(Dataset):
         result = wav.clone()
         seed = self.seed + index if self.eval else None
 
-        if seed is not None:
-            torch.manual_seed(seed)
-            np.random.seed(seed)
-            random.seed(seed) 
-
-        zeros_mask = result == 0
-        amplitude = abs(np.random.normal(loc=0.0, scale=0.1))
-        result += torch.rand_like(result) * zeros_mask * amplitude
-        actual_max = wav.max()
-        rand_idx = random.randint(0, result.shape[-1] - 1)
-        result[0][rand_idx] = actual_max if actual_max >= 0.1 else WAV_AFTERNORM_COEF
-        
         for aug in self.augmentations:
             try:
                 result = aug(result, seed)
@@ -332,7 +319,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
-        silence_ratio=0.3,
+        silence_ratio=0.2,
         augs_conf=tuple()
     ):
         super().__init__(
@@ -358,17 +345,15 @@ class AugmentedLibriTTSR(AugmentedDataset):
                                         orig_freq=sr,
                                         new_freq=self.in_sr
                                     )
-            wav = self.resamplers[sr](wav.squeeze(0)).numpy()
-        else:
-            wav = wav.numpy().squeeze(0)
+            wav = self.resamplers[sr](wav)
 
         wav = self._add_silence(wav)
-        (wav,) = split_audios([wav], self.segment_size, self.split)
-        wav = torch.from_numpy(wav[None])
+        augmented = self._apply_augs(wav, index).numpy().squeeze(0)
 
-        augmented = self._apply_augs(wav, index).squeeze()
+        (wav, augmented) = split_audios([wav.numpy().squeeze(0), augmented], self.segment_size, self.split)
+        wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
 
-        input_wav = self._safe_normalize(augmented)[None] * WAV_AFTERNORM_COEF
+        input_wav = self._safe_normalize(augmented) * WAV_AFTERNORM_COEF
         target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
 
         input_wav = input_wav[:,:target_wav.shape[-1]]
@@ -430,14 +415,13 @@ class AugmentedDaps(AugmentedDataset):
                                         orig_freq=sr,
                                         new_freq=self.out_sr
                                     )
-            wav = self.resamplers[key](wav.squeeze(0)).numpy()
-        else:
-            wav = wav.numpy().squeeze(0)
+            wav = self.resamplers[key](wav.squeeze(0))
 
-        (wav,) = split_audios([wav], self.segment_size, self.split)
-        wav = torch.from_numpy(wav[None])
+        wav = self._add_silence(wav)
+        augmented = self._apply_augs(wav, index).numpy().squeeze(0)
 
-        input_wav = self._apply_augs(wav, index).squeeze()[None]
+        (wav, augmented) = split_audios([wav.numpy().squeeze(0), augmented], self.segment_size, self.split)
+        wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
         
         target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
 
