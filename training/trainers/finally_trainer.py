@@ -150,7 +150,7 @@ class FinallyStage2DoubleDiscTrainer(FinallyBaseTrainer):
     def __init__(self, config):
         super().__init__(config)
         self.ms_sftf_name = "ms-stft_disc"
-        self.ssd_name = "ssd"
+        self.ssd_name = "msd"
 
     def train_step(self):
         gen = self.models[self.gen_name]
@@ -189,8 +189,7 @@ class FinallyStage2DoubleDiscTrainer(FinallyBaseTrainer):
             ms_stft_loss.backward()
             ms_stft_optimizer.step()
 
-            ssd_real_out, _, = ssd(real_wav)
-            ssd_gen_out, _, = ssd(gen_wav.detach())
+            ssd_real_out, ssd_gen_out, _, _ = ssd(real_wav, gen_wav.detach())
 
             ssd_loss, ssd_losses_dict = ssd_loss_builder.calculate_loss({
                 'ssd': dict(
@@ -207,9 +206,8 @@ class FinallyStage2DoubleDiscTrainer(FinallyBaseTrainer):
         gen_optimizer.zero_grad()
 
         _, ms_stft_fmaps_real = ms_stft(real_wav)
-        _, ssd_fmaps_real = ssd(real_wav)
         ms_stft_gen_out, ms_stft_fmaps_gen = ms_stft(gen_wav)
-        ssd_gen_out, ssd_fmaps_gen = ssd(gen_wav)
+        ssd_real_out, ssd_gen_out, ssd_fmaps_real, ssd_fmaps_gen = ssd(real_wav, gen_wav)
 
         gen_loss, gen_losses_dict = gen_loss_builder.calculate_loss({
             '': dict(
