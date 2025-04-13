@@ -294,6 +294,18 @@ class AugmentedDataset(Dataset):
         result = wav.clone()
         seed = self.seed + index if self.eval else None
 
+        if seed is not None:
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed) 
+
+        zeros_mask = result == 0
+        amplitude = abs(np.random.normal(loc=0.0, scale=0.1))
+        result += torch.rand_like(result) * zeros_mask * amplitude
+        actual_max = wav.max()
+        rand_idx = random.randint(0, result.shape[-1] - 1)
+        result[0][rand_idx] = actual_max if actual_max >= 0.1 else WAV_AFTERNORM_COEF
+        
         for aug in self.augmentations:
             try:
                 result = aug(result, seed)
