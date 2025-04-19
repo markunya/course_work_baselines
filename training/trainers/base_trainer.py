@@ -239,6 +239,7 @@ class BaseTrainer(BaseTrainerHelpers):
                 **self.config.data.train_dataset_args
             )
         tqdm.write('Train dataset successfully initialized')
+        tqdm.write(f'Will be used {self.config.data.train_dataset} for training')
 
     def setup_val_dataset(self):
         self.val_dataset = datasets_registry[self.config.data.val_dataset](
@@ -250,6 +251,7 @@ class BaseTrainer(BaseTrainerHelpers):
                 **self.config.data.val_dataset_args
         )
         tqdm.write('Validation dataset successfully initialized')
+        tqdm.write(f'Will be used {self.config.data.val_dataset} for validating')
 
     def setup_trainval_datasets(self):
         self.train_dataset = datasets_registry[self.config.data.dataset](
@@ -268,6 +270,7 @@ class BaseTrainer(BaseTrainerHelpers):
                 **self.config.data.dataset_args
         )
         tqdm.write('Datasets for train and validation successfully initialized')
+        tqdm.write(f'Will be used {self.config.data.dataset} both for training and validating')
 
     def setup_inference_dataset(self):
         self.inference_dataset = datasets_registry[self.config.data.dataset](
@@ -335,6 +338,7 @@ class BaseTrainer(BaseTrainerHelpers):
 
     def training_loop(self):
         with tqdm(total=self.config.train.steps, desc='Training Progress', unit='step') as progress:
+            progress.update(self.step - 1)
             for self.step in range(self.start_step, self.config.train.steps + 1):
                 self.to_train()
                 
