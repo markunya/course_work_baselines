@@ -115,7 +115,7 @@ class STOI:
             real_wav_np = real_wav.cpu().numpy()
             gen_wav_np = gen_wav.cpu().numpy()
 
-            stoi_score = stoi(real_wav_np, gen_wav_np, self.sr, extended=True)
+            stoi_score = stoi(real_wav_np, gen_wav_np, self.sr)
             scores.append(stoi_score)
 
         return float(np.mean(scores).item())
