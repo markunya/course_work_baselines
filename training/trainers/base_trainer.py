@@ -21,10 +21,9 @@ from metrics.metrics import metrics_registry
 from utils.data_utils import save_wavs_to_dir
 from utils.model_utils import unwrap_model
 
-
 gan_trainers_registry = ClassRegistry()
 
-class BaseTrainer:
+class BaseTrainerHelpers:
     def __init__(self, config):
         self.config = config
         self.device = config.exp.device
@@ -33,49 +32,7 @@ class BaseTrainer:
             self.start_step = config.train.start_step
             self.step = self.start_step
         self.multi_gpu = False
-
-    def setup_training(self):
-        self.setup_experiment_dir()
-
-        self.setup_models()
-        self.setup_optimizers()
-        self.setup_losses()
-
-        self.setup_val_metrics()
-        self.setup_logger()
-
-        self.setup_trainval_datasets()
-        self.setup_trainval_dataloaders()
-
-
-    def setup_inference(self):
-        self.setup_experiment_dir()
-
-        self.setup_models()
-
-        self.setup_inf_metrics()
-        self.setup_logger()
-
-        self.setup_inference_dataset()
-        self.setup_inference_dataloader()
-
-    def setup_experiment_dir(self):
-        self.exp_dir = self.config.exp.exp_dir
-
-        if not os.path.exists(self.exp_dir):
-            os.makedirs(self.exp_dir)
-            tqdm.write(f'Experiment directory \'{self.exp_dir}\' created.')
-
-        self.inference_out_dir = os.path.join(self.exp_dir, 'inference_out')
-        self.checkpoints_dir = os.path.join(self.exp_dir, 'checkpoints')
-
-        for dir_path in [self.inference_out_dir, self.checkpoints_dir]:
-            if not os.path.exists(dir_path):
-                os.makedirs(dir_path)
-                tqdm.write(f'Subdirectory \'{dir_path}\' created.')
-
-        tqdm.write('Experiment dir successfully initialized')
-
+    
     def _create_model(self, model_name, model_config):
         model_class = models_registry[model_name]
         model = model_class(**model_config['args'])
@@ -101,12 +58,6 @@ class BaseTrainer:
         model = model.to(self.device)
 
         return model
-    
-    def setup_models(self):
-        self.models = {}
-        for model_name, model_config in self.config.models.items():
-            self.models[model_name] = self._create_model(model_name, model_config)
-        tqdm.write(f'Models successfully initialized: {list(self.models.keys())}')
 
     def _create_optimizer(self, model_name, model_config):
         optimizer_name = model_config['optimizer']['name']
@@ -140,6 +91,112 @@ class BaseTrainer:
         scheduler_name = model_config['scheduler']['name']
         scheduler_class = schedulers_registry[scheduler_name]
         return scheduler_class(self.optimizers[model_name], **model_config['scheduler']['args'])
+    
+    def _compute_metrics(self, batch, gen_batch, metrics_dict, action):
+        for metric_name, metric in self.metrics:
+            value = metric(batch, gen_batch)
+            assert isinstance(value, float), f"Each metric result must be float type, but {metric_name} returned {type(value)}"
+
+            key = f'{action}_{metric_name}'
+            if key not in metrics_dict:
+                metrics_dict[key] = []
+
+            metrics_dict[key].append(value)
+    
+    def _avg_computed_metrics(self, metrics_dict, action):
+        ci_dict = {}
+        
+        for metric_name, _ in self.metrics:
+            key = f"{action}_{metric_name}"
+            values = np.array(metrics_dict[key])
+
+            mean = np.mean(values)
+            metrics_dict[key] = float(mean)
+
+            if len(values) > 1:
+                std = np.std(values, ddof=1)
+                sem = std / np.sqrt(len(values))
+                t = stats.t.ppf(0.975, df=len(values)-1)
+                u = t * sem
+            else:
+                u = 0.0
+
+            ci_dict[key] = float(u)
+
+        return ci_dict
+
+    def _log_synthesized_batch(self, iterator):
+        for _ in range(self.config.exp.log_batch_size):
+            batch = next(iterator)
+            gen_batch = self.synthesize_wavs(batch)
+            sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else self.config.mel.in_sr
+            self.logger.log_synthesized_batch(gen_batch, sr, step=self.step)
+
+    def _print_metrics(self, metrics_dict, ci_dict):
+        for key in metrics_dict.keys():
+            mean = metrics_dict[key]
+            u = ci_dict[key]
+            tqdm.write(f"{key}: {mean:.4f} ± {u:.4f}")
+
+class BaseTrainer(BaseTrainerHelpers):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def setup_training(self):
+        self.setup_experiment_dir()
+
+        self.setup_models()
+        self.setup_optimizers()
+        self.setup_losses()
+
+        self.setup_val_metrics()
+        self.setup_logger()
+
+        if 'dataset' in self.config.data:
+            self.setup_trainval_datasets()
+        elif 'train_dataset' in self.config.data and 'val_dataset' in self.config.data:
+            self.setup_train_dataset()
+            self.setup_val_dataset()
+        else:
+            raise ValueError("Invalid config: data section must contain either dataset"
+                             "or train_dataset and val_dataset")
+        
+        self.setup_trainval_dataloaders()
+
+
+    def setup_inference(self):
+        self.setup_experiment_dir()
+
+        self.setup_models()
+
+        self.setup_inf_metrics()
+        self.setup_logger()
+
+        self.setup_inference_dataset()
+        self.setup_inference_dataloader()
+
+    def setup_experiment_dir(self):
+        self.exp_dir = self.config.exp.exp_dir
+
+        if not os.path.exists(self.exp_dir):
+            os.makedirs(self.exp_dir)
+            tqdm.write(f'Experiment directory \'{self.exp_dir}\' created.')
+
+        self.inference_out_dir = os.path.join(self.exp_dir, 'inference_out')
+        self.checkpoints_dir = os.path.join(self.exp_dir, 'checkpoints')
+
+        for dir_path in [self.inference_out_dir, self.checkpoints_dir]:
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
+                tqdm.write(f'Subdirectory \'{dir_path}\' created.')
+
+        tqdm.write('Experiment dir successfully initialized')
+    
+    def setup_models(self):
+        self.models = {}
+        for model_name, model_config in self.config.models.items():
+            self.models[model_name] = self._create_model(model_name, model_config)
+        tqdm.write(f'Models successfully initialized: {list(self.models.keys())}')
 
     def setup_optimizers(self):
         self.optimizers = {}
@@ -173,6 +230,26 @@ class BaseTrainer:
         self.logger = TrainingLogger(self.config)
         if self.config.exp.use_wandb:
             tqdm.write('Logger successfully initialized')
+
+    def setup_train_dataset(self):
+        self.train_dataset = datasets_registry[self.config.data.train_dataset](
+                self.config.data.train_data_root,
+                self.config.data.train_data_file_path,
+                self.config.mel,
+                **self.config.data.train_dataset_args
+            )
+        tqdm.write('Train dataset successfully initialized')
+
+    def setup_val_dataset(self):
+        self.val_dataset = datasets_registry[self.config.data.val_dataset](
+                self.config.data.val_data_root,
+                self.config.data.val_data_file_path,
+                self.config.mel,
+                split=False,
+                eval=True,
+                **self.config.data.val_dataset_args
+        )
+        tqdm.write('Validation dataset successfully initialized')
 
     def setup_trainval_datasets(self):
         self.train_dataset = datasets_registry[self.config.data.dataset](
@@ -212,6 +289,7 @@ class BaseTrainer:
             num_workers=self.config.data.workers,
             pin_memory=True,
         )
+        tqdm.write('Train dataloader successfully initialized')
 
     def setup_val_dataloader(self):
         self.val_dataloader = DataLoader(
@@ -221,6 +299,7 @@ class BaseTrainer:
             num_workers=self.config.data.workers,
             pin_memory=True,
         )
+        tqdm.write('Val dataloader successfully initialized')
 
     def setup_inference_dataloader(self):
         self.inference_dataloader = DataLoader(
@@ -230,11 +309,11 @@ class BaseTrainer:
             num_workers=self.config.data.workers,
             pin_memory=True,
         )
+        tqdm.write('Inference dataloader successfully initialized')
 
     def setup_trainval_dataloaders(self):
         self.setup_train_dataloader()
         self.setup_val_dataloader()
-        tqdm.write('Dataloaders successfully initialized')
 
     def to_train(self):
         for model in self.models.values():
@@ -304,52 +383,6 @@ class BaseTrainer:
                 tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:
                 tqdm.write(f'An error occured when saving checkpoint for {model_name} on step {self.step}: {e}')
-
-    def _compute_metrics(self, batch, gen_batch, metrics_dict, action):
-        for metric_name, metric in self.metrics:
-            value = metric(batch, gen_batch)
-            assert isinstance(value, float), f"Each metric result must be float type, but {metric_name} returned {type(value)}"
-
-            key = f'{action}_{metric_name}'
-            if key not in metrics_dict:
-                metrics_dict[key] = []
-
-            metrics_dict[key].append(value)
-    
-    def _avg_computed_metrics(self, metrics_dict, action):
-        ci_dict = {}
-        
-        for metric_name, _ in self.metrics:
-            key = f"{action}_{metric_name}"
-            values = np.array(metrics_dict[key])
-
-            mean = np.mean(values)
-            metrics_dict[key] = float(mean)
-
-            if len(values) > 1:
-                std = np.std(values, ddof=1)
-                sem = std / np.sqrt(len(values))
-                t = stats.t.ppf(0.975, df=len(values)-1)
-                u = t * sem
-            else:
-                u = 0.0
-
-            ci_dict[key] = float(u)
-
-        return ci_dict
-
-    def _log_synthesized_batch(self, iterator):
-        for _ in range(self.config.exp.log_batch_size):
-            batch = next(iterator)
-            gen_batch = self.synthesize_wavs(batch)
-            sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else self.config.mel.in_sr
-            self.logger.log_synthesized_batch(gen_batch, sr, step=self.step)
-
-    def _print_metrics(self, metrics_dict, ci_dict):
-        for key in metrics_dict.keys():
-            mean = metrics_dict[key]
-            u = ci_dict[key]
-            tqdm.write(f"{key}: {mean:.4f} ± {u:.4f}")
 
     @torch.no_grad()
     def validate(self):
