@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 
+from scipy import stats
 from abc import abstractmethod
 from datasets.dataloaders import InfiniteLoader
 from training.loggers import TrainingLogger
@@ -19,6 +20,7 @@ from metrics.metrics import metrics_registry
 
 from utils.data_utils import save_wavs_to_dir
 from utils.model_utils import unwrap_model
+
 
 gan_trainers_registry = ClassRegistry()
 
@@ -315,8 +317,26 @@ class BaseTrainer:
             metrics_dict[key].append(value)
     
     def _avg_computed_metrics(self, metrics_dict, action):
-        for metric_name, _ in self.metrics: 
-            metrics_dict[f'{action}_{metric_name}'] = np.mean(metrics_dict[f'{action}_{metric_name}'])
+        ci_dict = {}
+        
+        for metric_name, _ in self.metrics:
+            key = f"{action}_{metric_name}"
+            values = np.array(metrics_dict[key])
+
+            mean = np.mean(values)
+            metrics_dict[key] = float(mean)
+
+            if len(values) > 1:
+                std = np.std(values, ddof=1)
+                sem = std / np.sqrt(len(values))
+                t = stats.t.ppf(0.975, df=len(values)-1)
+                u = t * sem
+            else:
+                u = 0.0
+
+            ci_dict[key] = float(u)
+
+        return ci_dict
 
     def _log_synthesized_batch(self, iterator):
         for _ in range(self.config.exp.log_batch_size):
@@ -325,57 +345,60 @@ class BaseTrainer:
             sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else self.config.mel.in_sr
             self.logger.log_synthesized_batch(gen_batch, sr, step=self.step)
 
+    def _print_metrics(self, metrics_dict, ci_dict):
+        for key in metrics_dict.keys():
+            mean = metrics_dict[key]
+            u = ci_dict[key]
+            tqdm.write(f"{key}: {mean:.4f} ± {u:.4f}")
+
     @torch.no_grad()
     def validate(self):
         self.to_eval()
         metrics_dict = {}
 
-        for batch in self.val_dataloader:
+        for batch in tqdm(self.val_dataloader, desc=f"Validating Progress on {self.step}"):
             gen_batch = self.synthesize_wavs(batch)
             self._compute_metrics(batch, gen_batch, metrics_dict, action='val')
 
-        self._avg_computed_metrics(metrics_dict, action='val')
+        ci_dict = self._avg_computed_metrics(metrics_dict, action='val')
 
         self.logger.log_metrics(metrics_dict, self.step)
         self._log_synthesized_batch(iter(self.val_dataloader))
 
-        tqdm.write('Validation completed.' + 
-                (f'Metrics: {metrics_dict}' if len(metrics_dict) > 0 else ''))
+        tqdm.write('Validation completed:')
+        self._print_metrics(metrics_dict, ci_dict)
 
     @torch.no_grad()
     def inference(self):
         self.to_eval()
         metrics_dict = {}
 
-        with tqdm(total=len(self.inference_dataloader), desc='Inference Progress', unit='step') as progress:
-            for batch in self.inference_dataloader:
-                gen_batch = self.synthesize_wavs(batch)
-                run_inf_dir = os.path.join(self.inference_out_dir, self.config.exp.run_name)
+        for batch in tqdm(self.inference_dataloader, desc=f"Inference Progress"):
+            gen_batch = self.synthesize_wavs(batch)
+            run_inf_dir = os.path.join(self.inference_out_dir, self.config.exp.run_name)
 
-                in_sr = self.config.mel.in_sr
-                out_sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else in_sr
+            in_sr = self.config.mel.in_sr
+            out_sr = self.config.mel.out_sr if 'out_sr' in self.config.mel else in_sr
                 
-                if self.config.inference.save_samples:
-                    if 'input_wav' in batch:
-                        save_wavs_to_dir(batch['input_wav'], batch['name'],
-                                        os.path.join(run_inf_dir, 'input'), in_sr)
-                    if 'wav' in batch:
-                        save_wavs_to_dir(batch['wav'], batch['name'],
-                                        os.path.join(run_inf_dir, 'ground_truth'), out_sr)
-                    save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
+            if self.config.inference.save_samples:
+                if 'input_wav' in batch:
+                    save_wavs_to_dir(batch['input_wav'], batch['name'],
+                                    os.path.join(run_inf_dir, 'input'), in_sr)
+                if 'wav' in batch:
+                    save_wavs_to_dir(batch['wav'], batch['name'],
+                                    os.path.join(run_inf_dir, 'ground_truth'), out_sr)
+                save_wavs_to_dir(gen_batch['gen_wav'], gen_batch['name'],
                                     os.path.join(run_inf_dir, 'generated'), out_sr)
 
-                self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
-
-                progress.update(1)
+            self._compute_metrics(batch, gen_batch, metrics_dict, action='inf')
         
-        self._avg_computed_metrics(metrics_dict, action='inf')
+        ci_dict = self._avg_computed_metrics(metrics_dict, action='inf')
 
         self.logger.log_metrics(metrics_dict, 0)
         self._log_synthesized_batch(iter(self.inference_dataloader))
 
-        tqdm.write('Inference completed.' + 
-                (f'Metrics: {metrics_dict}' if len(metrics_dict) > 0 else ''))
+        tqdm.write('Inference completed:')
+        self._print_metrics(metrics_dict, ci_dict)
     
     @abstractmethod
     def synthesize_wavs(self, batch):
