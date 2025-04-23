@@ -27,7 +27,7 @@ class FinallyBaseTrainer(BaseTrainer):
             wav = wav.squeeze(1)
 
         outputs = self.wavlm(input_values=wav, output_hidden_states=True)
-        features = outputs.extract_features
+        features = outputs.last_hidden_state
 
         return features
 

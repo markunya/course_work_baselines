@@ -238,9 +238,9 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         )
         self.resblock_type = ResBlock1 if hifi_resblock == '1' else ResBlock2
         self.pre_upsampler_proccessing = nn.Sequential(
-            self.resblock_type(spectralunet_out_channels + 512),
+            self.resblock_type(spectralunet_out_channels + 1024),
             nn.LeakyReLU(LRELU_SLOPE),
-            self.norm(nn.Conv1d(spectralunet_out_channels + 512, hifi_input_channels, 1))
+            self.norm(nn.Conv1d(spectralunet_out_channels + 1024, hifi_input_channels, 1))
         )
         init_weights(self.pre_upsampler_proccessing)
 
@@ -275,13 +275,13 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         assert x.shape[1] == 512
 
         wavlm_features = wavlm_features.permute(0, 2, 1)
-        assert wavlm_features.shape[1] == 512
+        assert wavlm_features.shape[1] == 1024
 
         wavlm_features_interpolated = torch.nn.functional.interpolate(
             wavlm_features, size=x.shape[2], mode='nearest'
         )
         x = torch.cat([wavlm_features_interpolated, x], 1)
-        assert x.shape[1] == 1024
+        assert x.shape[1] == 1536
 
         x = self.pre_upsampler_proccessing(x)
         x = self.hifi(x)

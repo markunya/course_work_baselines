@@ -175,6 +175,7 @@ class UTMOSMetric:
     def __init__(self, config):
         orig_sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
         self.utmos = UTMOSV2(orig_sr=orig_sr, device=config.exp.device).to(config.exp.device)
+        self.utmos.eval()
     
     def __call__(self, real_batch, gen_batch) -> float:
         with torch.no_grad():
