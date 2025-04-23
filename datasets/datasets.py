@@ -426,6 +426,7 @@ class AugmentedDaps(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
+        silence_ratio=0.2,
         virtual_len=100000,
         augs_conf=tuple()
     ):
@@ -436,7 +437,8 @@ class AugmentedDaps(AugmentedDataset):
             seed=seed,
             eval=eval,
             split=split,
-            augs_conf=augs_conf
+            augs_conf=augs_conf,
+            silence_ratio=silence_ratio
         )
         assert self.out_sr % self.in_sr == 0, "in_sr should devide out_sr"
         if not eval and not split:
