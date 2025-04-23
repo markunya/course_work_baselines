@@ -19,30 +19,30 @@ mel:
     fmax_for_loss: null
 
 data:
-    dataset: augmented_libritts-r
-    dataset_args:
-        silence_ratio: 0.3
+    train_dataset: augmented_libritts-r
+    train_dataset_args:
+        silence_ratio: 0.2
         augs_conf:
           - name: noise
             args:
               root: "../datasets_fullband/noise_fullband"
               noise_files_path:
-                train: "datasets/splits/DNS_noise_split/train_files.txt"
-                val: "datasets/splits/DNS_noise_split/val_files.txt"
+                train: "datasets/metadata/DNS_noise/train_files.txt"
+                val: "datasets/metadata/DNS_noise/val_files.txt"
 
           - name: impulse_response
             args:
               root: "../datasets_fullband/micro_irs"
               ir_files_path:
-                train: "datasets/splits/micro_ir_split/train_files.txt"
-                val: "datasets/splits/micro_ir_split/val_files.txt"
+                train: "datasets/metadata/micro_ir/train_files.txt"
+                val: "datasets/metadata/micro_ir/val_files.txt"
 
           - name: impulse_response
             args:
               root: "../datasets_fullband/room_irs"
               ir_files_path:
-                train: "datasets/splits/DNS_ir_split/train_files.txt"
-                val: "datasets/splits/DNS_ir_split/val_files.txt"
+                train: "datasets/metadata/DNS_ir/train_files.txt"
+                val: "datasets/metadata/DNS_ir/val_files.txt"
               prob: 0.8
 
           - name: acrusher
@@ -65,11 +65,17 @@ data:
             args:
               prob: 0.45
 
-    trainval_data_root: "../LibriTTS_R"
-    train_data_file_path: "datasets/splits/LibriTTS-R_split/train_files.txt"
-    val_data_file_path: "datasets/splits/LibriTTS-R_split/val_files.txt"
-    inference_data_root: "../LibriTTS_R"
-    inference_data_file_path: "datasets/splits/LibriTTS-R_split/test_files.txt"
+    train_data_root: "../LibriTTS_R"
+    train_data_file_path: "datasets/metadata/LibriTTS-R/train_files.txt"
+
+    
+    val_dataset: vctk-demand
+    val_dataset_args:
+        clean_wavs_dir: "clean_testset_wav"
+        noisy_wavs_dir: "noisy_testset_wav"
+    val_data_root: "../vctk_demand"
+    val_data_file_path: "datasets/metadata/VCTK-Demand/files.txt"
+
     train_batch_size: 32
     workers: 8
 
@@ -80,7 +86,7 @@ train:
     steps: 100000
     log_step: 250
     checkpoint_step: 10000
-    val_step: 4000
+    val_step: 10000
 
 inference:
     trainer: finally_stage1_trainer

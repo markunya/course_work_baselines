@@ -369,52 +369,6 @@ class AugmentedLibriTTSR(AugmentedDataset):
             'wav': target_wav,
             'name': filename
         }
-    
-@datasets_registry.add_to_registry(name='progressive_augmented_libritts-r')
-class ProgressiveAugmentedLibriTTSR(AugmentedLibriTTSR):
-    def __init__(
-        self,
-        root,
-        files_list_path,
-        mel_conf,
-        warmup_steps,
-        seed=42,
-        eval=False,
-        split=True,
-        silence_ratio=0.2,
-        augs_conf=tuple()
-    ):
-        super().__init__(
-            root=root,
-            files_list_path=files_list_path,
-            mel_conf=mel_conf,
-            seed=seed,
-            eval=eval,
-            split=split,
-            silence_ratio=silence_ratio,
-            augs_conf=augs_conf
-        )
-        self.alpha_step = 1.0 / warmup_steps
-        self.alpha = 0.0
-        self.reached_one = False
-
-    def _update_alpha(self):
-        if self.reached_one:
-            return
-        if self.alpha >= 1.0:
-            self.reached_one = True
-            tqdm.write('Alpha reached one in progressive dataset')
-            return
-        self.alpha = min(1.0, self.alpha + self.alpha_step)
-    
-    def _interpolate(self, wav1, wav2):
-        return self.alpha * wav1 + (1 - self.alpha) * wav2
-    
-    def __getitem__(self, index):
-        batch = super().__getitem__(index)
-        if not self.eval:
-            batch['input_wav'] = self._interpolate(batch['input_wav'], batch['wav'])
-        return batch
 
 @datasets_registry.add_to_registry(name='augmented_daps')
 class AugmentedDaps(AugmentedDataset):
@@ -463,7 +417,7 @@ class AugmentedDaps(AugmentedDataset):
                                         orig_freq=sr,
                                         new_freq=self.out_sr
                                     )
-            wav = self.resamplers[key](wav.squeeze(0))
+            wav = self.resamplers[key](wav)
 
         wav = self._add_silence(wav)
         augmented = self._apply_augs(wav, index).numpy().squeeze(0)
@@ -472,8 +426,7 @@ class AugmentedDaps(AugmentedDataset):
         wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
         
         target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
-
-        input_wav = input_wav[:,:target_wav.shape[-1]]
+        input_wav = augmented[:,:target_wav.shape[-1]]
 
         base = 3072
         remainder = input_wav.shape[-1] % base

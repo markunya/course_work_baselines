@@ -51,6 +51,12 @@ class LMOSLoss(nn.Module):
 
         self.stft = T.Spectrogram(n_fft=fft_size, hop_length=hop_length, power=1)
 
+    def _extract_features(self, wavlm, input):
+        extract_features = wavlm.feature_extractor(input)
+        extract_features = extract_features.transpose(1, 2)
+        _, extract_features = wavlm.feature_projection(extract_features)
+        return extract_features
+
     def forward(self, real_wav, gen_wav, wavlm):
         # it should be guaranteed that wavlm weights not require grad in eval mode
         if len(real_wav.shape) == 3:
@@ -58,8 +64,8 @@ class LMOSLoss(nn.Module):
         if len(gen_wav.shape) == 3:
             gen_wav = gen_wav.squeeze(1)
 
-        real_features = wavlm(real_wav, output_hidden_states=True).extract_features
-        gen_features = wavlm(gen_wav, output_hidden_states=True).extract_features
+        real_features = self._extract_features(wavlm, real_wav)
+        gen_features = self._extract_features(wavlm, gen_wav)
 
         feature_loss = F.mse_loss(real_features, gen_features)
 

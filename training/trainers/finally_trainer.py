@@ -144,100 +144,13 @@ class FinallyStage2Trainer(FinallyBaseTrainer):
         gen_optimizer.step()
 
         return {**gen_losses_dict, **disc_losses_dict}
-    
-@gan_trainers_registry.add_to_registry(name='finally_stage2_double_disc_trainer')
-class FinallyStage2DoubleDiscTrainer(FinallyBaseTrainer):
-    def __init__(self, config):
-        super().__init__(config)
-        self.ms_sftf_name = "ms-stft_disc"
-        self.ssd_name = "msd"
-
-    def train_step(self):
-        gen = self.models[self.gen_name]
-        gen_optimizer = self.optimizers[self.gen_name]
-        gen_loss_builder = self.loss_builders[self.gen_name]
-        ms_stft = self.models[self.ms_sftf_name]
-        ms_stft_optimizer = self.optimizers[self.ms_sftf_name]
-        ms_stft_loss_builder = self.loss_builders[self.ms_sftf_name]
-        ssd = self.models[self.ssd_name]
-        ssd_optimizer = self.optimizers[self.ssd_name]
-        ssd_loss_builder = self.loss_builders[self.ssd_name]
-
-        batch = next(self.train_dataloader)
-        real_wav = batch['wav'].to(self.device).unsqueeze(1)
-        input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
-
-        wavlm_features = self.apply_wavlm(input_wav)
-        gen_wav = gen(input_wav, wavlm_features)
-
-        requires_grad(ms_stft, True)
-        requires_grad(ssd, True)
-        for _ in range(2):
-            ms_stft_optimizer.zero_grad()
-            ssd_optimizer.zero_grad
-
-            ms_stft_real_out, _, = ms_stft(real_wav)
-            ms_stft_gen_out, _, = ms_stft(gen_wav.detach())
-
-            ms_stft_loss, ms_stft_losses_dict = ms_stft_loss_builder.calculate_loss({
-                'ms-stft': dict(
-                    discs_real_out=ms_stft_real_out,
-                    discs_gen_out=ms_stft_gen_out
-                )
-            }, tl_suffix='ms-stft')
-            
-            ms_stft_loss.backward()
-            ms_stft_optimizer.step()
-
-            ssd_real_out, ssd_gen_out, _, _ = ssd(real_wav, gen_wav.detach())
-
-            ssd_loss, ssd_losses_dict = ssd_loss_builder.calculate_loss({
-                'ssd': dict(
-                    discs_real_out=ssd_real_out,
-                    discs_gen_out=ssd_gen_out
-                )
-            }, tl_suffix='ssd')
-            
-            ssd_loss.backward()
-            ssd_optimizer.step()
-
-        requires_grad(ms_stft, False)
-        requires_grad(ssd, False)
-        gen_optimizer.zero_grad()
-
-        _, ms_stft_fmaps_real = ms_stft(real_wav)
-        ms_stft_gen_out, ms_stft_fmaps_gen = ms_stft(gen_wav)
-        ssd_real_out, ssd_gen_out, ssd_fmaps_real, ssd_fmaps_gen = ssd(real_wav, gen_wav)
-
-        gen_loss, gen_losses_dict = gen_loss_builder.calculate_loss({
-            '': dict(
-                gen_wav=gen_wav,
-                real_wav=real_wav,
-                wavlm=self.wavlm
-            ),
-            'ms-stft': dict(
-                discs_gen_out=ms_stft_gen_out,
-                fmaps_real=ms_stft_fmaps_real,
-                fmaps_gen=ms_stft_fmaps_gen
-            ),
-            'ssd': dict(
-                discs_gen_out=ssd_gen_out,
-                fmaps_real=ssd_fmaps_real,
-                fmaps_gen=ssd_fmaps_gen
-            )
-        }, tl_suffix='gen')
-
-        gen_loss.backward()
-        gen_optimizer.step()
-
-        return {**gen_losses_dict, **ms_stft_losses_dict, **ssd_losses_dict}
 
 @gan_trainers_registry.add_to_registry(name='finally_stage3_trainer')
 class FinallyStage3Trainer(FinallyStage2Trainer):
     def __init__(self, config):
         super().__init__(config)
         self.backbone_freezed = False
-        self.sub_batch_size = 16
+        self.sub_batch_size = 32
         if 'train_batch_size' in config.data:
             assert config.data.train_batch_size % self.sub_batch_size == 0, \
                 "Train butch size must be divisible by 16 for 3 stage trainer"

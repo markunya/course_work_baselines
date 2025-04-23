@@ -52,10 +52,10 @@ class L1MelDiff:
         score = self.l1_loss(real_mel, gen_mel).item()
         return float(score)
 
-@metrics_registry.add_to_registry(name='wb_pesq')
-class WBPesq(ResampleMetric):
-    def __init__(self, config):
+class PesqBase(ResampleMetric):
+    def __init__(self, config, mode):
         super().__init__(config, 16000)
+        self.mode = mode
 
     def __call__(self, real_batch, gen_batch) -> float:
         scores = []
@@ -83,7 +83,7 @@ class WBPesq(ResampleMetric):
 
         if total_len < chunk_len:
             try:
-                return pesq(sr, ref[:chunk_len], deg[:chunk_len], 'wb')
+                return pesq(sr, ref[:chunk_len], deg[:chunk_len], self.mode)
             except:
                 return 1.0
 
@@ -96,13 +96,23 @@ class WBPesq(ResampleMetric):
                 break
 
             try:
-                score = pesq(sr, ref_chunk, deg_chunk, 'wb')
+                score = pesq(sr, ref_chunk, deg_chunk, self.mode)
                 scores.append(score)
             except Exception as e:
                 tqdm.write(f'PESQ error on chunk {start}:{start+chunk_len}: {e}')
                 continue
 
         return float(np.mean(scores)) if scores else 1.0
+
+@metrics_registry.add_to_registry(name='wb_pesq')
+class WbPesq(PesqBase):
+    def __init__(self, config):
+        super().__init__(config, mode='wb')
+
+@metrics_registry.add_to_registry(name='nb_pesq')
+class NbPesq(PesqBase):
+    def __init__(self, config):
+        super().__init__(config, mode='nb')
     
 @metrics_registry.add_to_registry(name='stoi')
 class STOI:
