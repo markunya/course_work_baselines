@@ -26,22 +26,22 @@ data:
             args:
               root: "../datasets_fullband/noise_fullband"
               noise_files_path:
-                train: "datasets/splits/DNS_noise_split/train_files.txt"
-                val: "datasets/splits/DNS_noise_split/val_files.txt"
+                train: "datasets/metadata/DNS_noise/train_files.txt"
+                val: "datasets/metadata/DNS_noise/val_files.txt"
 
           - name: impulse_response
             args:
               root: "../datasets_fullband/micro_irs"
               ir_files_path:
-                train: "datasets/splits/micro_ir_split/train_files.txt"
-                val: "datasets/splits/micro_ir_split/val_files.txt"
+                train: "datasets/metadata/micro_ir/train_files.txt"
+                val: "datasets/metadata/micro_ir/val_files.txt"
 
           - name: impulse_response
             args:
               root: "../datasets_fullband/room_irs"
               ir_files_path:
-                train: "datasets/splits/DNS_ir_split/train_files.txt"
-                val: "datasets/splits/DNS_ir_split/val_files.txt"
+                train: "datasets/metadata/DNS_ir/train_files.txt"
+                val: "datasets/metadata/DNS_ir/val_files.txt"
               prob: 0.8
 
           - name: acrusher
@@ -65,10 +65,10 @@ data:
               prob: 0.45
 
     trainval_data_root: "../LibriTTS_R"
-    train_data_file_path: "datasets/splits/LibriTTS-R_split/train_files.txt"
-    val_data_file_path: "datasets/splits/LibriTTS-R_split/val_files.txt"
+    train_data_file_path: "datasets/metadata/LibriTTS-R/train_files.txt"
+    val_data_file_path: "datasets/metadata/LibriTTS-R/val_files.txt"
     inference_data_root: "../LibriTTS_R"
-    inference_data_file_path: "datasets/splits/LibriTTS-R_split/test_files.txt"
+    inference_data_file_path: "datasets/metadata/LibriTTS-R/test_files.txt"
     train_batch_size: 32
     workers: 16
 
@@ -100,7 +100,6 @@ models:
                 gamma: 0.995
                 reduce_time: "period"
                 step_period: 200
-                warmup_steps: 10
 
         checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_stage1_wavlm0.pth"
         load_optimizer_from_checkpoint: false

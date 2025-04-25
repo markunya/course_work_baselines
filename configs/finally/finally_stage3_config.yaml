@@ -26,22 +26,22 @@ data:
             args:
               root: "../datasets_fullband/noise_fullband"
               noise_files_path:
-                train: "datasets/splits/DNS_noise_split/train_files.txt"
-                val: "datasets/splits/DNS_noise_split/val_files.txt"
+                train: "datasets/metadata/DNS_noise/train_files.txt"
+                val: "datasets/metadata/DNS_noise/val_files.txt"
 
           - name: impulse_response
             args:
               root: "../datasets_fullband/micro_irs"
               ir_files_path:
-                train: "datasets/splits/micro_ir_split/train_files.txt"
-                val: "datasets/splits/micro_ir_split/val_files.txt"
+                train: "datasets/metadata/micro_ir/train_files.txt"
+                val: "datasets/metadata/micro_ir/val_files.txt"
 
           - name: impulse_response
             args:
               root: "../datasets_fullband/room_irs"
               ir_files_path:
-                train: "datasets/splits/DNS_ir_split/train_files.txt"
-                val: "datasets/splits/DNS_ir_split/val_files.txt"
+                train: "datasets/metadata/DNS_ir/train_files.txt"
+                val: "datasets/metadata/DNS_ir/val_files.txt"
               prob: 0.8
 
           - name: acrusher
@@ -65,10 +65,10 @@ data:
               prob: 0.45
 
     trainval_data_root: "../daps"
-    train_data_file_path: "datasets/splits/DAPS_split/files.txt"
-    val_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    train_data_file_path: "datasets/metadata/DAPS/files.txt"
+    val_data_file_path: "datasets/metadata/DAPS/files.txt"
     inference_data_root: "../daps"
-    inference_data_file_path: "datasets/splits/DAPS_split/files.txt"
+    inference_data_file_path: "datasets/metadata/DAPS/files.txt"
     train_batch_size: 32
     workers: 16
 
@@ -109,15 +109,11 @@ models:
           use_upsamplewaveunet: true
         losses:
             lmos:
-              coef: 0.005
+              coef: 1.0
             gen_loss:
-              coef: 5.0
+              coef: 0.4
             feature_loss:
-              coef: 15.0
-            utmos:
               coef: 20.0
-            pesq:
-              coef: 2.0
     
     ms-stft_disc:
       optimizer:

@@ -10,7 +10,10 @@ if __name__ == "__main__":
     config = OmegaConf.merge(config, conf_cli)
     setup_seed(config.exp.seed)
 
-    trainer = gan_trainers_registry[config.train.trainer](config)
+    trainer_args = {}
+    if 'trainer_args' in config.train:
+        trainer_args = config.train.trainer_args
+    trainer = gan_trainers_registry[config.train.trainer](config, **trainer_args)
 
     trainer.setup_training()
     trainer.training_loop()

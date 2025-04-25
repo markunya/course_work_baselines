@@ -380,7 +380,6 @@ class AugmentedDaps(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
-        silence_ratio=0.2,
         virtual_len=100000,
         augs_conf=tuple()
     ):
@@ -391,8 +390,7 @@ class AugmentedDaps(AugmentedDataset):
             seed=seed,
             eval=eval,
             split=split,
-            augs_conf=augs_conf,
-            silence_ratio=silence_ratio
+            augs_conf=augs_conf
         )
         assert self.out_sr % self.in_sr == 0, "in_sr should devide out_sr"
         if not eval and not split:
@@ -407,23 +405,21 @@ class AugmentedDaps(AugmentedDataset):
 
         filename = self.files_list[index]
         if filename not in self.cache: 
-            self.cache[filename] = torchaudio.load(os.path.join(self.root, filename))         
-        wav, sr = self.cache[filename]
-
-        if self.out_sr != sr:
-            key = (sr, self.out_sr)
-            if key not in self.resamplers:
-                self.resamplers[key] = torchaudio.transforms.Resample(
-                                        orig_freq=sr,
-                                        new_freq=self.out_sr
-                                    )
-            wav = self.resamplers[key](wav)
-
-        wav = self._add_silence(wav)
-        augmented = self._apply_augs(wav, index).numpy().squeeze(0)
-
-        (wav, augmented) = split_audios([wav.numpy().squeeze(0), augmented], self.segment_size, self.split)
-        wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
+            wav, sr = torchaudio.load(os.path.join(self.root, filename))
+            if self.out_sr != sr:
+                key = (sr, self.out_sr)
+                if key not in self.resamplers:
+                    self.resamplers[key] = torchaudio.transforms.Resample(
+                                            orig_freq=sr,
+                                            new_freq=self.out_sr
+                                        )
+                wav = self.resamplers[key](wav)
+            self.cache[filename] = wav
+            
+        wav = self.cache[filename]
+        (wav, ) = split_audios([wav.numpy().squeeze(0)], self.segment_size, self.split)
+        wav = torch.from_numpy(wav[None])
+        augmented = self._apply_augs(wav, index)
         
         target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
         input_wav = augmented[:,:target_wav.shape[-1]]

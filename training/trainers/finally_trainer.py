@@ -1,6 +1,7 @@
 import torch
 import torchaudio
 from torch import nn
+from tqdm import tqdm
 from utils.model_utils import requires_grad, unwrap_model
 from training.trainers.base_trainer import BaseTrainer
 from transformers import WavLMModel
@@ -144,32 +145,44 @@ class FinallyStage2Trainer(FinallyBaseTrainer):
         gen_optimizer.step()
 
         return {**gen_losses_dict, **disc_losses_dict}
-
-@gan_trainers_registry.add_to_registry(name='finally_stage3_trainer')
-class FinallyStage3Trainer(FinallyStage2Trainer):
+    
+@gan_trainers_registry.add_to_registry(name='finally_stage3_pretrainer')
+class FinallyStage3Trainer(FinallyStage1Trainer):
     def __init__(self, config):
         super().__init__(config)
         self.backbone_freezed = False
-        self.sub_batch_size = 32
-        if 'train_batch_size' in config.data:
-            assert config.data.train_batch_size % self.sub_batch_size == 0, \
-                "Train butch size must be divisible by 16 for 3 stage trainer"
 
     def _freeze_backbone_if_not_freezed(self):
         if not self.backbone_freezed:
             requires_grad(self.models[self.gen_name], False)
             requires_grad(unwrap_model(self.models[self.gen_name]).upsamplewaveunet, True)
-            self.backbone_freezed = True
 
-    def _merge_loss_dicts(self, losses_list):
-            out = {}
-            for key in losses_list[0]:
-                out[key] = sum(d[key] for d in losses_list) / len(losses_list)
-            return out
+            tqdm.write(f'Freezed {self.gen_name} backbone. Need to recreate optimizer and scheduler.')
+            self.optimizers[self.gen_name] = self._create_optimizer(self.gen_name, self.config.models[self.gen_name])
+            self.schedulers[self.gen_name] = self._create_scheduler(self.gen_name, self.config.models[self.gen_name])
+            tqdm.write(f'Optimizer and scheduler for {self.gen_name} successfully updated')
+
+            self.backbone_freezed = True
 
     def train_step(self):
         self._freeze_backbone_if_not_freezed()
+        return super().train_step()
+    
+@gan_trainers_registry.add_to_registry(name='finally_stage3_trainer')
+class FinallyStage3Trainer(FinallyStage2Trainer):
+    def __init__(self, config, sub_batch_size=None):
+        super().__init__(config)
 
+        self.batch_size = config.data.train_batch_size
+        self.sub_batch_size = sub_batch_size
+        if self.sub_batch_size is None:
+            self.sub_batch_size = self.batch_size
+        
+        if self.batch_size % self.sub_batch_size != 0:
+            tqdm.write('Warning: sub_batch_size do not divide train_batch size.' \
+            'So the total batch size with grad accumulation could be smaller than you think.')
+
+    def train_step(self):
         gen = self.models[self.gen_name]
         gen_optimizer = self.optimizers[self.gen_name]
         gen_loss_builder = self.loss_builders[self.gen_name]
@@ -180,58 +193,48 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
         batch = next(self.train_dataloader)
         real_wav = batch['wav'].to(self.device).unsqueeze(1)
         input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
-
-        batch_size = real_wav.size(0)
-        sub_bs = self.sub_batch_size
-        num_sub_batches = batch_size // sub_bs
-
-        all_gen_losses = []
-        all_disc_losses = []
+        
+        wavlm_features = self.apply_wavlm(input_wav)
+        gen_wav = gen(input_wav, wavlm_features)
 
         requires_grad(disc, True)
         for _ in range(2):
             disc_optimizer.zero_grad()
 
-            for i in range(num_sub_batches):
-                real_chunk = real_wav[i * sub_bs:(i + 1) * sub_bs]
-                input_chunk = input_wav[i * sub_bs:(i + 1) * sub_bs]
+            disc_real_out, _, = disc(real_wav)
+            disc_gen_out, _, = disc(gen_wav.detach())
 
-                with torch.no_grad():
-                    wavlm_features = self.apply_wavlm(input_chunk)
-                    gen_chunk = gen(input_chunk, wavlm_features)
-
-                disc_real_out, _ = disc(real_chunk)
-                disc_gen_out, _ = disc(gen_chunk.detach())
-
-                disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
-                    '': dict(
-                        discs_real_out=disc_real_out,
-                        discs_gen_out=disc_gen_out
-                    )
-                }, tl_suffix='ms-stft')
-
-                (disc_loss / num_sub_batches).backward()
-
+            disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
+                '': dict(
+                    discs_real_out=disc_real_out,
+                    discs_gen_out=disc_gen_out
+                )
+            }, tl_suffix='ms-stft')
+            
+            disc_loss.backward()
             disc_optimizer.step()
-            all_disc_losses.append(disc_losses_dict)
 
         requires_grad(disc, False)
         gen_optimizer.zero_grad()
 
-        for i in range(num_sub_batches):
-            real_chunk = real_wav[i * sub_bs:(i + 1) * sub_bs]
-            input_chunk = input_wav[i * sub_bs:(i + 1) * sub_bs]
+        gen_wav_for_loss = gen_wav.detach().requires_grad_(True)
+        accum_steps = self.batch_size // self.sub_batch_size
+        total_gen_loss = 0.0
+        gen_losses_dict_accum = {}
 
-            wavlm_features = self.apply_wavlm(input_chunk)
-            gen_chunk = gen(input_chunk, wavlm_features)
+        for i in range(accum_steps):
+            start = i * self.sub_batch_size
+            end = (i + 1) * self.sub_batch_size
+            real_sub = real_wav[start:end]
+            gen_sub = gen_wav_for_loss[start:end]
 
-            _, disc_fmaps_real = disc(real_chunk)
-            disc_gen_out, disc_fmaps_gen = disc(gen_chunk)
+            _, disc_fmaps_real = disc(real_sub)
+            disc_gen_out, disc_fmaps_gen = disc(gen_sub)
 
             gen_loss, gen_losses_dict = gen_loss_builder.calculate_loss({
                 '': dict(
-                    gen_wav=gen_chunk,
-                    real_wav=real_chunk,
+                    gen_wav=gen_sub,
+                    real_wav=real_sub,
                     wavlm=self.wavlm
                 ),
                 'ms-stft': dict(
@@ -241,12 +244,16 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
                 )
             }, tl_suffix='gen')
 
-            (gen_loss / num_sub_batches).backward()
-            all_gen_losses.append(gen_losses_dict)
+            total_gen_loss += gen_loss.item()
 
+            for k, v in gen_losses_dict.items():
+                gen_losses_dict_accum[k] = gen_losses_dict_accum.get(k, 0.0) + v
+
+            (gen_loss / accum_steps).backward()
+
+        gen_wav.backward(gen_wav_for_loss.grad)
         gen_optimizer.step()
 
-        return {
-            **self._merge_loss_dicts(all_gen_losses),
-            **self._merge_loss_dicts(all_disc_losses)
-        }
+        gen_losses_dict = {k: v / accum_steps for k, v in gen_losses_dict_accum.items()}
+
+        return {**gen_losses_dict, **disc_losses_dict}
