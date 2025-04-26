@@ -364,14 +364,14 @@ class BaseTrainer(BaseTrainerHelpers):
                         sr = self.config.mel.in_sr
                         self.logger.log_synthesized_batch(input_batch, sr, step=self.step)
 
+                if self.step % self.config.train.checkpoint_step == 0:
+                    self.save_checkpoint()
+
                 if self.step % self.config.train.val_step == 0:
                     self.validate()
 
                 if self.step % self.config.train.log_step == 0:
                     self.logger.log_train_losses(self.step)
-
-                if self.step % self.config.train.checkpoint_step == 0:
-                    self.save_checkpoint()
 
     
     def save_checkpoint(self):

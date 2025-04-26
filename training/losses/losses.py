@@ -52,9 +52,9 @@ class LMOSLoss(nn.Module):
         self.stft = T.Spectrogram(n_fft=fft_size, hop_length=hop_length, power=1)
 
     def _extract_features(self, wavlm, input):
-        extract_features = wavlm.feature_extractor(input)
+        extract_features = unwrap_model(wavlm).feature_extractor(input)
         extract_features = extract_features.transpose(1, 2)
-        _, extract_features = wavlm.feature_projection(extract_features)
+        _, extract_features = unwrap_model(wavlm).feature_projection(extract_features)
         return extract_features
 
     def forward(self, real_wav, gen_wav, wavlm):

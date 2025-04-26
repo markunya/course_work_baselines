@@ -15,6 +15,7 @@ mkdir -p "$OUT_DIR"
 # List of archive URLs
 URLS=(
     "https://www.openslr.org/resources/141/test_clean.tar.gz"
+    "https://www.openslr.org/resources/141/test_other.tar.gz"
     "https://www.openslr.org/resources/141/train_clean_100.tar.gz"
     "https://www.openslr.org/resources/141/train_clean_360.tar.gz"
 )

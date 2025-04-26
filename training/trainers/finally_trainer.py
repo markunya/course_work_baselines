@@ -193,6 +193,8 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
         batch = next(self.train_dataloader)
         real_wav = batch['wav'].to(self.device).unsqueeze(1)
         input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
+
+        accum_steps = self.batch_size // self.sub_batch_size
         
         wavlm_features = self.apply_wavlm(input_wav)
         gen_wav = gen(input_wav, wavlm_features)
@@ -200,26 +202,37 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
         requires_grad(disc, True)
         for _ in range(2):
             disc_optimizer.zero_grad()
-
-            disc_real_out, _, = disc(real_wav)
-            disc_gen_out, _, = disc(gen_wav.detach())
-
-            disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
-                '': dict(
-                    discs_real_out=disc_real_out,
-                    discs_gen_out=disc_gen_out
-                )
-            }, tl_suffix='ms-stft')
+            gen_wav_detached = gen_wav.detach()
+            disc_losses_dict_accum = {}
             
-            disc_loss.backward()
+            for i in range(accum_steps):
+                start = i * self.sub_batch_size
+                end = (i + 1) * self.sub_batch_size
+                real_sub = real_wav[start:end]
+                gen_sub = gen_wav_detached[start:end]
+
+                disc_real_out, _, = disc(real_sub)
+                disc_gen_out, _, = disc(gen_sub)
+
+                disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
+                    '': dict(
+                        discs_real_out=disc_real_out,
+                        discs_gen_out=disc_gen_out
+                    )
+                }, tl_suffix='ms-stft')
+
+                for k, v in disc_losses_dict.items():
+                    disc_losses_dict_accum[k] = disc_losses_dict_accum.get(k, 0.0) + v
+                
+                (disc_loss / accum_steps).backward()
+
             disc_optimizer.step()
+            gen_losses_dict = {k: v / accum_steps for k, v in disc_losses_dict_accum.items()}
 
         requires_grad(disc, False)
         gen_optimizer.zero_grad()
 
         gen_wav_for_loss = gen_wav.detach().requires_grad_(True)
-        accum_steps = self.batch_size // self.sub_batch_size
-        total_gen_loss = 0.0
         gen_losses_dict_accum = {}
 
         for i in range(accum_steps):
@@ -243,8 +256,6 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
                     fmaps_gen=disc_fmaps_gen
                 )
             }, tl_suffix='gen')
-
-            total_gen_loss += gen_loss.item()
 
             for k, v in gen_losses_dict.items():
                 gen_losses_dict_accum[k] = gen_losses_dict_accum.get(k, 0.0) + v
