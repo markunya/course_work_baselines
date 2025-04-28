@@ -70,7 +70,7 @@ data:
     inference_data_root: "../LibriTTS_R"
     inference_data_file_path: "datasets/metadata/LibriTTS-R/test_files.txt"
     train_batch_size: 32
-    workers: 16
+    workers: 8
 
 train:
     trainer: finally_stage2_trainer
@@ -78,12 +78,8 @@ train:
     start_step: 1
     steps: 30000
     log_step: 250
-    checkpoint_step: 10000
+    checkpoint_step: 5000
     val_step: 5000
-
-inference:
-    trainer: finally_stage2_trainer
-    metrics: ["wb_pesq", "stoi", "si_sdr"]
 
 models:
     finally_gen:
@@ -101,13 +97,13 @@ models:
                 reduce_time: "period"
                 step_period: 200
 
-        checkpoint_path: "../usefull_checkpoints/finally_gen_checkpoint_100000_stage1_wavlm0.pth"
+        checkpoint_path: ### place checkpoint path here
         load_optimizer_from_checkpoint: false
         
         args: {}
         losses:
             lmos:
-              coef: 1.0
+              coef: 20.0
             gen_loss:
               coef: 0.4
             feature_loss:
@@ -130,7 +126,7 @@ models:
 
       checkpoint_path: null
       args:
-          filters: 32
+          filters: 64
           n_ffts: [2048, 1024, 512, 256, 128]
           hop_lengths: [512, 256, 128, 64, 32]
           win_lengths: [2048, 1024, 512, 256, 128]

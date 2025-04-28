@@ -21,7 +21,7 @@ mel:
 data:
     train_dataset: augmented_libritts-r
     train_dataset_args:
-        silence_ratio: 0.2
+        silence_ratio: 0.0
         augs_conf:
           - name: noise
             args:
@@ -87,10 +87,6 @@ train:
     log_step: 250
     checkpoint_step: 10000
     val_step: 10000
-
-inference:
-    trainer: finally_stage1_trainer
-    metrics: []
 
 models:
     finally_gen:
