@@ -74,7 +74,7 @@ data:
 
 train:
     trainer: finally_stage2_trainer
-    val_metrics: ["wb_pesq", "stoi", "si_sdr", "wv-mos", "utmos", dnsmos]
+    val_metrics: ["wb_pesq", "stoi", "si_sdr", "wv-mos", "utmos", "dnsmos"]
     start_step: 1
     steps: 30000
     log_step: 250
