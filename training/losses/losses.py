@@ -111,10 +111,13 @@ class UTMOSLoss(nn.Module):
             for backbone in unwrap_model(self.utmos).utmos.spec_long.backbones:
                 backbone.set_grad_checkpointing(True)
 
+        self.sigmoid = nn.Sigmoid()
+
     def forward(self, gen_wav):
         if gen_wav.ndim == 3:
             gen_wav = gen_wav.squeeze(1)
         
         mos = self.utmos(gen_wav)
-            
-        return -mos.mean()
+        normalized = 5 * self.sigmoid(mos - 2.5)
+
+        return -normalized.mean()
