@@ -1,5 +1,5 @@
 exp:
-    project_name: finally
+    project_name: # your project name
     exp_dir: experiment
     device: cuda
     seed: 1234
@@ -24,21 +24,21 @@ data:
         augs_conf:
           - name: noise
             args:
-              root: "../datasets_fullband/noise_fullband"
+              root: # dns noise dataset root directory
               noise_files_path:
                 train: "datasets/metadata/DNS_noise/train_files.txt"
                 val: "datasets/metadata/DNS_noise/val_files.txt"
 
           - name: impulse_response
             args:
-              root: "../datasets_fullband/micro_irs"
+              root: # micro impulse responses dataset root directory
               ir_files_path:
                 train: "datasets/metadata/micro_ir/train_files.txt"
                 val: "datasets/metadata/micro_ir/val_files.txt"
 
           - name: impulse_response
             args:
-              root: "../datasets_fullband/room_irs"
+              root: # dns room impulse responses dataset root directory
               ir_files_path:
                 train: "datasets/metadata/DNS_ir/train_files.txt"
                 val: "datasets/metadata/DNS_ir/val_files.txt"
@@ -64,11 +64,16 @@ data:
             args:
               prob: 0.45
 
-    trainval_data_root: "../daps"
+    train_data_root: # daps dataset root directory
     train_data_file_path: "datasets/metadata/DAPS/files.txt"
-    val_data_file_path: "datasets/metadata/DAPS/files.txt"
-    inference_data_root: "../daps"
-    inference_data_file_path: "datasets/metadata/DAPS/files.txt"
+    
+    val_dataset: vctk-demand
+    val_dataset_args:
+        clean_wavs_dir: "clean_testset_wav"
+        noisy_wavs_dir: "noisy_testset_wav"
+    val_data_root:  # vctk-demand dataset root directory
+    val_data_file_path: "datasets/metadata/VCTK-Demand/files.txt"
+
     train_batch_size: 32
     workers: 8
 

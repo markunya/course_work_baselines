@@ -1,5 +1,5 @@
 exp:
-    project_name: finally
+    project_name: # your project name
     exp_dir: experiment
     device: cuda
     seed: 1234
@@ -23,7 +23,7 @@ data:
     dataset_args:
         clean_wavs_dir: "clean_testset_wav"
         noisy_wavs_dir: "noisy_testset_wav"
-    inference_data_root: "../vctk_demand"
+    inference_data_root: # vctk-demand dataset root directory
     inference_data_file_path: "datasets/metadata/VCTK-Demand/files.txt"
     workers: 0
 
