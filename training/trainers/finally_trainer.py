@@ -147,7 +147,7 @@ class FinallyStage2Trainer(FinallyBaseTrainer):
         return {**gen_losses_dict, **disc_losses_dict}
     
 @gan_trainers_registry.add_to_registry(name='finally_stage3_pretrainer')
-class FinallyStage3Trainer(FinallyStage1Trainer):
+class FinallyStage3Pretrainer(FinallyStage1Trainer):
     def __init__(self, config):
         super().__init__(config)
         self.backbone_freezed = False
