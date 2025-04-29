@@ -79,6 +79,8 @@ data:
 
 train:
     trainer: finally_stage3_trainer
+    trainer_args:
+      sub_batch_size: 8
     val_metrics: ["utmos", "dnsmos", "wv-mos", "wb_pesq", "stoi", "si_sdr"]
     start_step: 1
     steps: 40000
