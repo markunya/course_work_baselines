@@ -560,6 +560,9 @@ class VCTKDemandDataset(Dataset):
                                     )
             clean_wav = self.resamplers[key](clean_wav)
 
+        clean_wav = (clean_wav / torch.max(torch.abs(clean_wav))) * WAV_AFTERNORM_COEF
+        noisy_wav = (noisy_wav / torch.max(torch.abs(noisy_wav))) * WAV_AFTERNORM_COEF
+
         return {
             'input_wav': noisy_wav.squeeze(),
             'wav': clean_wav.squeeze(),
