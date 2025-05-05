@@ -2,6 +2,7 @@ import os
 import torch
 import numpy as np
 import torch.nn as nn
+from autoclip.torch import QuantileClip
 
 from scipy import stats
 from abc import abstractmethod
@@ -85,8 +86,20 @@ class BaseTrainerHelpers:
             else:
                 tqdm.write(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
 
-        return optimizer
-    
+        clip_args = {}
+        if 'clip_quantile' in self.config.train:
+            clip_args['quantile'] = self.config.train.clip_quantile
+            tqdm.write(f'Clip quantile set to {clip_args['quantile']} for {model_name}')
+        if 'clip_history' in self.config.train:
+            clip_args['history'] = self.config.train.clip_history
+            tqdm.write(f'Clip history set to {clip_args['history']} for {model_name}')
+
+        return QuantileClip.as_optimizer(
+                    optimizer=optimizer,
+                    global_threshold=True,
+                    **clip_args
+                )
+
     def _create_scheduler(self, model_name, model_config):
         scheduler_name = model_config['scheduler']['name']
         scheduler_class = schedulers_registry[scheduler_name]
