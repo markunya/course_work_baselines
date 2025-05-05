@@ -350,7 +350,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
         wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
 
         input_wav = torch.nan_to_num(augmented)
-        target_wav, _ = torch.nan_to_num(wav)
+        target_wav = torch.nan_to_num(wav)
 
         input_wav = input_wav[:,:target_wav.shape[-1]]
         pad_size = closest_power_of_two(target_wav.shape[-1]) - target_wav.shape[-1]
@@ -359,6 +359,9 @@ class AugmentedLibriTTSR(AugmentedDataset):
         target_wav = torch.nn.functional.pad(target_wav, (0, pad_size)).squeeze()
 
         assert input_wav.shape == target_wav.shape
+
+        input_wav = torch.clamp(input_wav, min=-1, max=1)
+        target_wav = torch.clamp(target_wav, min=-1, max=1)
 
         return {
             'input_wav': input_wav,
@@ -560,6 +563,9 @@ class VCTKDemandDataset(Dataset):
                                         resampling_method="sinc_interp_kaiser"
                                     )
             clean_wav = self.resamplers[key](clean_wav)
+
+        noisy_wav = torch.clamp(noisy_wav, min=-1, max=1)
+        clean_wav = torch.clamp(clean_wav, min=-1, max=1)
 
         return {
             'input_wav': noisy_wav.squeeze(),

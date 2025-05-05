@@ -19,8 +19,8 @@ mel:
     fmax_for_loss: null
 
 data:
-    dataset: augmented_libritts-r
-    dataset_args:
+    train_dataset: augmented_libritts-r
+    train_dataset_args:
         augs_conf:
           - name: noise
             args:

@@ -86,7 +86,10 @@ class BaseTrainerHelpers:
             else:
                 tqdm.write(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
 
-        clip_args = {}
+        clip_args = {
+            'quantile': 1.0
+        }
+        
         if 'clip_quantile' in self.config.train:
             clip_args['quantile'] = self.config.train.clip_quantile
             tqdm.write(f'Clip quantile set to {clip_args['quantile']} for {model_name}')
@@ -400,7 +403,7 @@ class BaseTrainer(BaseTrainerHelpers):
 
                 path = os.path.join(dir_path, f'{model_name}_checkpoint_{self.step}_{self.config.exp.run_name}.pth')
                 torch.save(checkpoint, path)
-                
+
                 tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:
                 tqdm.write(f'An error occured when saving checkpoint for {model_name} on step {self.step}: {e}')
