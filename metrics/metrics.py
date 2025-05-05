@@ -21,8 +21,10 @@ class ResampleMetric(ABC):
         self.target_sr = target_sr
         self.device = config.exp.device
         sr = config.mel.out_sr if 'out_sr' in config.mel else config.mel.in_sr
-        self.resampler = T.Resample(orig_freq=sr,
-                                new_freq=self.target_sr).to(self.device)
+        self.resampler = T.Resample(
+                                orig_freq=sr,
+                                new_freq=self.target_sr,
+                                resampling_method="sinc_interp_kaiser").to(self.device)
         
     def resample(self, wav):
         return self.resampler(wav.unsqueeze(0)).squeeze(0)

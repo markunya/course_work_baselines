@@ -43,7 +43,7 @@ class RandomNoise:
 
         if noise_sr != target_sr:
             if noise_sr not in self.resampler_cache:
-                self.resampler_cache[noise_sr] = Resample(noise_sr, target_sr)
+                self.resampler_cache[noise_sr] = Resample(noise_sr, target_sr, resampling_method="sinc_interp_kaiser")
             noise_waveform = self.resampler_cache[noise_sr](noise_waveform)
 
         repeat_factor = (target_length // noise_waveform.shape[1]) + 1
@@ -77,7 +77,7 @@ class RandomImpulseResponse:
 
         if sr_ir != target_sr:
             if sr_ir not in self.resampler_cache:
-                self.resampler_cache[sr_ir] = Resample(sr_ir, target_sr)
+                self.resampler_cache[sr_ir] = Resample(sr_ir, target_sr, resampling_method="sinc_interp_kaiser")
             ir_waveform = self.resampler_cache[sr_ir](ir_waveform)
 
         ir_waveform = ir_waveform / torch.max(torch.abs(ir_waveform))

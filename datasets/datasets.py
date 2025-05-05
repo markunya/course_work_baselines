@@ -301,11 +301,6 @@ class AugmentedDataset(Dataset):
         
         return result
 
-    def _safe_normalize(self, wav):
-        wav = torch.nan_to_num(wav)
-        max_val = torch.max(torch.abs(wav))
-        return wav / max_val if max_val > 0 else wav
-
     def __len__(self):
         return len(self.files_list)
 
@@ -343,7 +338,8 @@ class AugmentedLibriTTSR(AugmentedDataset):
             if sr not in self.resamplers:
                 self.resamplers[sr] = torchaudio.transforms.Resample(
                                         orig_freq=sr,
-                                        new_freq=self.in_sr
+                                        new_freq=self.in_sr,
+                                        resampling_method="sinc_interp_kaiser"
                                     )
             wav = self.resamplers[sr](wav)
 
@@ -353,8 +349,8 @@ class AugmentedLibriTTSR(AugmentedDataset):
         (wav, augmented) = split_audios([wav.numpy().squeeze(0), augmented], self.segment_size, self.split)
         wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
 
-        input_wav = self._safe_normalize(augmented) * WAV_AFTERNORM_COEF
-        target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
+        input_wav = torch.nan_to_num(augmented)
+        target_wav, _ = torch.nan_to_num(wav)
 
         input_wav = input_wav[:,:target_wav.shape[-1]]
         pad_size = closest_power_of_two(target_wav.shape[-1]) - target_wav.shape[-1]
@@ -411,7 +407,8 @@ class AugmentedDaps(AugmentedDataset):
                 if key not in self.resamplers:
                     self.resamplers[key] = torchaudio.transforms.Resample(
                                             orig_freq=sr,
-                                            new_freq=self.out_sr
+                                            new_freq=self.out_sr,
+                                            resampling_method="sinc_interp_kaiser"
                                         )
                 wav = self.resamplers[key](wav)
             self.cache[filename] = wav
@@ -421,7 +418,7 @@ class AugmentedDaps(AugmentedDataset):
         wav = torch.from_numpy(wav[None])
         augmented = self._apply_augs(wav, index)
         
-        target_wav = self._safe_normalize(wav) * WAV_AFTERNORM_COEF
+        target_wav = torch.nan_to_num(wav)
         input_wav = augmented[:,:target_wav.shape[-1]]
 
         base = 3072
@@ -435,11 +432,12 @@ class AugmentedDaps(AugmentedDataset):
             if key not in self.resamplers:
                 self.resamplers[key] = torchaudio.transforms.Resample(
                                         orig_freq=self.out_sr,
-                                        new_freq=self.in_sr
+                                        new_freq=self.in_sr,
+                                        resampling_method="sinc_interp_kaiser"
                                     )
             input_wav = self.resamplers[key](input_wav)
 
-        input_wav = self._safe_normalize(input_wav) * WAV_AFTERNORM_COEF
+        input_wav = torch.nan_to_num(input_wav)
 
         return {
             'input_wav': input_wav.squeeze(),
@@ -487,7 +485,8 @@ class FinallyDataset(Dataset):
             if sr not in self.resamplers:
                 self.resamplers[sr] = torchaudio.transforms.Resample(
                                         orig_freq=sr,
-                                        new_freq=self.in_sr
+                                        new_freq=self.in_sr,
+                                        resampling_method="sinc_interp_kaiser"
                                     )
             wav = self.resamplers[sr](wav)
 
@@ -547,7 +546,8 @@ class VCTKDemandDataset(Dataset):
             if key not in self.resamplers:
                 self.resamplers[key] = torchaudio.transforms.Resample(
                                         orig_freq=noisy_sr,
-                                        new_freq=self.in_sr
+                                        new_freq=self.in_sr,
+                                        resampling_method="sinc_interp_kaiser"
                                     )
             noisy_wav = self.resamplers[key](noisy_wav)
         
@@ -556,12 +556,10 @@ class VCTKDemandDataset(Dataset):
             if key not in self.resamplers:
                 self.resamplers[key] = torchaudio.transforms.Resample(
                                         orig_freq=clean_sr,
-                                        new_freq=self.in_sr
+                                        new_freq=self.in_sr,
+                                        resampling_method="sinc_interp_kaiser"
                                     )
             clean_wav = self.resamplers[key](clean_wav)
-
-        clean_wav = (clean_wav / torch.max(torch.abs(clean_wav))) * WAV_AFTERNORM_COEF
-        noisy_wav = (noisy_wav / torch.max(torch.abs(noisy_wav))) * WAV_AFTERNORM_COEF
 
         return {
             'input_wav': noisy_wav.squeeze(),

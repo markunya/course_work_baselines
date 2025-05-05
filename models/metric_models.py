@@ -105,7 +105,10 @@ class UTMOSV2(nn.Module):
             freeze=True
         ).to(device)
 
-        self.resample = T.Resample(orig_freq=self.orig_sr, new_freq=self.target_sr)
+        self.resample = T.Resample(
+            orig_freq=self.orig_sr,
+            new_freq=self.target_sr,
+            resampling_method="sinc_interp_kaiser")
         self.mel_spectrograms = nn.ModuleList([
             T.MelSpectrogram(
                 sample_rate=self.target_sr,

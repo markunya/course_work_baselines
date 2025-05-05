@@ -390,13 +390,17 @@ class BaseTrainer(BaseTrainerHelpers):
     def save_checkpoint(self):
         for model_name in self.models.keys():
             try:
+                dir_path = os.path.join(self.checkpoints_dir, self.config.exp.run_name, model_name)
+                os.makedirs(dir_path, exist_ok=True)
+
                 checkpoint = {
                     'state_dict': unwrap_model(self.models[model_name]).state_dict(),
                     'optimizer_state_dict': self.optimizers[model_name].state_dict()
                 }
-                path = os.path.join(self.checkpoints_dir,
-                                f'{model_name}_checkpoint_{self.step}_{self.config.exp.run_name}.pth')
+
+                path = os.path.join(dir_path, f'{model_name}_checkpoint_{self.step}_{self.config.exp.run_name}.pth')
                 torch.save(checkpoint, path)
+                
                 tqdm.write(f'Checkpoint for {model_name} on step {self.step} saved to {path}')
             except Exception as e:
                 tqdm.write(f'An error occured when saving checkpoint for {model_name} on step {self.step}: {e}')
