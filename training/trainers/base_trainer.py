@@ -65,26 +65,29 @@ class BaseTrainerHelpers:
         optimizer_class = optimizers_registry[optimizer_name]
         optimizer = optimizer_class(self.models[model_name].parameters(), **model_config['optimizer']['args'])
 
+        load_from_checkpoint = True
         if 'load_optimizer_from_checkpoint' in model_config \
             and not model_config.load_optimizer_from_checkpoint:
             tqdm.write(
-                f'load_optimizer_from_checkpoint for model {model_name} set to false,' +
+                f'load_optimizer_from_checkpoint for model {model_name} set to false, ' +
                 'initializing optimizer from scratch'
             )
-            return optimizer
+            load_from_checkpoint = False
         
-        checkpoint_path = model_config.get('checkpoint_path')
+        if load_from_checkpoint:
+            checkpoint_path = model_config.get('checkpoint_path')
 
-        if checkpoint_path is not None and os.path.isfile(checkpoint_path):
-            tqdm.write(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
-            checkpoint = torch.load(checkpoint_path, map_location=self.device)
-            if 'optimizer_state_dict' in checkpoint:
-                try:
-                    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                except Exception as e:
-                    tqdm.write(f'An error occured when loading checkpoint for optimizer for {model_name}: {e}')
-            else:
-                tqdm.write(f'Warning: optimizer_state_dict not found in {checkpoint_path}. Starting fresh optimizer for {model_name}.')
+            if checkpoint_path is not None and os.path.isfile(checkpoint_path):
+                tqdm.write(f'Loading optimizer state for {model_name} from {checkpoint_path}...')
+                checkpoint = torch.load(checkpoint_path, map_location=self.device)
+                if 'optimizer_state_dict' in checkpoint:
+                    try:
+                        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                    except Exception as e:
+                        tqdm.write(f'An error occured when loading checkpoint for optimizer for {model_name}: {e}')
+                else:
+                    tqdm.write(f'Warning: optimizer_state_dict not found in {checkpoint_path}. '
+                               + 'Starting fresh optimizer for {model_name}.')
 
         clip_args = {
             'quantile': 1.0
