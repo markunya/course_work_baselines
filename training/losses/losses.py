@@ -13,8 +13,9 @@ class FeatureLoss(nn.Module):
     def forward(self, fmaps_real, fmaps_gen):
         loss = 0
         for one_disc_fmaps_real, one_disc_fmaps_gen in zip(fmaps_real, fmaps_gen):
+            num_layers = len(one_disc_fmaps_real)
             for fmap_real, fmap_gen in zip(one_disc_fmaps_real, one_disc_fmaps_gen):
-                loss += torch.mean(torch.abs(fmap_real - fmap_gen))
+                loss += F.l1_loss(fmap_real, fmap_gen) / num_layers
         return loss
 
 @losses_registry.add_to_registry(name='disc_loss')
@@ -22,8 +23,8 @@ class DiscriminatorLoss(nn.Module):
     def forward(self, discs_real_out, discs_gen_out):
         loss = 0
         for disc_real_out, disc_gen_out in zip(discs_real_out, discs_gen_out):
-            real_one_disc_loss = torch.mean((1 - disc_real_out)**2)
-            gen_one_disc_loss = torch.mean(disc_gen_out**2)
+            real_one_disc_loss = F.mse_loss(disc_real_out, torch.ones_like(disc_real_out))
+            gen_one_disc_loss = F.mse_loss(disc_gen_out, torch.zeros_like(disc_gen_out))
             loss += (real_one_disc_loss + gen_one_disc_loss)
         return loss
 
@@ -32,7 +33,7 @@ class GeneratorLoss(nn.Module):
     def forward(self, discs_gen_out):
         loss = 0
         for disc_gen_out in discs_gen_out:
-            one_disc_loss = torch.mean((1 - disc_gen_out)**2)
+            one_disc_loss = F.mse_loss(disc_gen_out, torch.ones_like(disc_gen_out))
             loss += one_disc_loss
         return loss
 
