@@ -474,7 +474,7 @@ class FinallyDataset(Dataset):
             self.files_list = []
             for _root, _, files in os.walk(self.root):
                 for file in files:
-                    if file.endswith('.wav'):
+                    if file.endswith('.wav') or file.endswith('.mp3'):
                         rel_path = os.path.relpath(os.path.join(_root, file), self.root)
                         self.files_list.append(rel_path)
         self.in_sr = mel_conf.in_sr

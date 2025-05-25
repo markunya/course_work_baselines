@@ -13,9 +13,8 @@ class FeatureLoss(nn.Module):
     def forward(self, fmaps_real, fmaps_gen):
         loss = 0
         for one_disc_fmaps_real, one_disc_fmaps_gen in zip(fmaps_real, fmaps_gen):
-            num_layers = len(one_disc_fmaps_real)
             for fmap_real, fmap_gen in zip(one_disc_fmaps_real, one_disc_fmaps_gen):
-                loss += F.l1_loss(fmap_real, fmap_gen) / num_layers
+                loss += F.l1_loss(fmap_real, fmap_gen)
         return loss
 
 @losses_registry.add_to_registry(name='disc_loss')
