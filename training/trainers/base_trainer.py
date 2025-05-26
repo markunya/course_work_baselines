@@ -162,6 +162,8 @@ class BaseTrainer(BaseTrainerHelpers):
         super().__init__(config)
 
     def setup_training(self):
+        self.setup_logger()
+        
         self.setup_experiment_dir()
 
         self.setup_models()
@@ -169,7 +171,6 @@ class BaseTrainer(BaseTrainerHelpers):
         self.setup_losses()
 
         self.setup_val_metrics()
-        self.setup_logger()
 
         if 'dataset' in self.config.data:
             self.setup_trainval_datasets()

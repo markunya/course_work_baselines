@@ -53,8 +53,8 @@ class FinallyBaseTrainer(BaseTrainer):
         result_dict['gen_wav'] = torch.stack(result_dict['gen_wav'])
         return result_dict
 
-@gan_trainers_registry.add_to_registry(name='finally_stage1_trainer')
-class FinallyStage1Trainer(FinallyBaseTrainer):
+@gan_trainers_registry.add_to_registry(name='finally_prettrainer')
+class FinallyPretrainer(FinallyBaseTrainer):
     def __init__(self, config):
         super().__init__(config)
 
@@ -83,74 +83,22 @@ class FinallyStage1Trainer(FinallyBaseTrainer):
         gen_optimizer.step()
 
         return {**gen_losses_dict}
-
-@gan_trainers_registry.add_to_registry(name='finally_stage2_trainer')
-class FinallyStage2Trainer(FinallyBaseTrainer):
-    def __init__(self, config):
-        super().__init__(config)
-        self.disc_name = "ms-stft_disc"
-
-    def train_step(self):
-        gen = self.models[self.gen_name]
-        gen_optimizer = self.optimizers[self.gen_name]
-        gen_loss_builder = self.loss_builders[self.gen_name]
-        disc = self.models[self.disc_name]
-        disc_optimizer = self.optimizers[self.disc_name]
-        disc_loss_builder = self.loss_builders[self.disc_name]
-
-        batch = next(self.train_dataloader)
-        real_wav = batch['wav'].to(self.device).unsqueeze(1)
-        input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
-
-        wavlm_features = self.apply_wavlm(input_wav)
-        gen_wav = gen(input_wav, wavlm_features)
-
-        requires_grad(disc, True)
-        for _ in range(2):
-            disc_optimizer.zero_grad()
-
-            disc_real_out, _, = disc(real_wav)
-            disc_gen_out, _, = disc(gen_wav.detach())
-
-            disc_loss, disc_losses_dict = disc_loss_builder.calculate_loss({
-                '': dict(
-                    discs_real_out=disc_real_out,
-                    discs_gen_out=disc_gen_out
-                )
-            }, tl_suffix='ms-stft')
-            
-            disc_loss.backward()
-            disc_optimizer.step()
-
-        requires_grad(disc, False)
-        gen_optimizer.zero_grad()
-
-        _, disc_fmaps_real = disc(real_wav)
-        disc_gen_out, disc_fmaps_gen = disc(gen_wav)
-
-        gen_loss, gen_losses_dict = gen_loss_builder.calculate_loss({
-            '': dict(
-                gen_wav=gen_wav,
-                real_wav=real_wav,
-                wavlm=self.wavlm
-            ),
-            'ms-stft': dict(
-                discs_gen_out=disc_gen_out,
-                fmaps_real=disc_fmaps_real,
-                fmaps_gen=disc_fmaps_gen
-            )
-        }, tl_suffix='gen')
-
-        gen_loss.backward()
-        gen_optimizer.step()
-
-        return {**gen_losses_dict, **disc_losses_dict}
     
-@gan_trainers_registry.add_to_registry(name='finally_stage3_pretrainer')
-class FinallyStage3Pretrainer(FinallyStage1Trainer):
-    def __init__(self, config):
+@gan_trainers_registry.add_to_registry(name='finally_trainer')
+class FinalllyTrainer(FinallyBaseTrainer):
+    def __init__(self, config, sub_batch_size=None, freeze_backbone=False, n_disc_iters=2):
         super().__init__(config)
-        self.backbone_freezed = False
+
+        self.backbone_freezed = not freeze_backbone
+        self.n_disc_iters = n_disc_iters
+        self.batch_size = config.data.train_batch_size
+        self.sub_batch_size = sub_batch_size
+        if self.sub_batch_size is None:
+            self.sub_batch_size = self.batch_size
+        
+        if self.batch_size % self.sub_batch_size != 0:
+            tqdm.write('Warning: sub_batch_size do not divide train_batch size.' \
+            'So the total batch size with grad accumulation could be smaller than you think.')
 
     def _freeze_backbone_if_not_freezed(self):
         if not self.backbone_freezed:
@@ -166,23 +114,7 @@ class FinallyStage3Pretrainer(FinallyStage1Trainer):
 
     def train_step(self):
         self._freeze_backbone_if_not_freezed()
-        return super().train_step()
-    
-@gan_trainers_registry.add_to_registry(name='finally_stage3_trainer')
-class FinallyStage3Trainer(FinallyStage2Trainer):
-    def __init__(self, config, sub_batch_size=None):
-        super().__init__(config)
 
-        self.batch_size = config.data.train_batch_size
-        self.sub_batch_size = sub_batch_size
-        if self.sub_batch_size is None:
-            self.sub_batch_size = self.batch_size
-        
-        if self.batch_size % self.sub_batch_size != 0:
-            tqdm.write('Warning: sub_batch_size do not divide train_batch size.' \
-            'So the total batch size with grad accumulation could be smaller than you think.')
-
-    def train_step(self):
         gen = self.models[self.gen_name]
         gen_optimizer = self.optimizers[self.gen_name]
         gen_loss_builder = self.loss_builders[self.gen_name]
@@ -200,7 +132,7 @@ class FinallyStage3Trainer(FinallyStage2Trainer):
         gen_wav = gen(input_wav, wavlm_features)
 
         requires_grad(disc, True)
-        for _ in range(2):
+        for _ in range(self.n_disc_iters):
             disc_optimizer.zero_grad()
             gen_wav_detached = gen_wav.detach()
             disc_losses_dict_accum = {}
