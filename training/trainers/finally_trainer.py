@@ -53,7 +53,7 @@ class FinallyBaseTrainer(BaseTrainer):
         result_dict['gen_wav'] = torch.stack(result_dict['gen_wav'])
         return result_dict
 
-@gan_trainers_registry.add_to_registry(name='finally_prettrainer')
+@gan_trainers_registry.add_to_registry(name='finally_pretrainer')
 class FinallyPretrainer(FinallyBaseTrainer):
     def __init__(self, config):
         super().__init__(config)
@@ -86,9 +86,16 @@ class FinallyPretrainer(FinallyBaseTrainer):
     
 @gan_trainers_registry.add_to_registry(name='finally_trainer')
 class FinalllyTrainer(FinallyBaseTrainer):
-    def __init__(self, config, sub_batch_size=None, freeze_backbone=False, n_disc_iters=2):
+    def __init__(
+            self,
+            config,
+            sub_batch_size=None,
+            freeze_backbone=False,
+            n_disc_iters=2
+        ):
         super().__init__(config)
 
+        self.disc_name = 'ms-stft_disc'
         self.backbone_freezed = not freeze_backbone
         self.n_disc_iters = n_disc_iters
         self.batch_size = config.data.train_batch_size
