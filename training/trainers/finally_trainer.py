@@ -103,7 +103,7 @@ class FinalllyTrainer(FinallyBaseTrainer):
         if self.sub_batch_size is None:
             self.sub_batch_size = self.batch_size
         
-        if self.batch_size % self.sub_batch_size != 0:
+        if self.batch_size and self.batch_size % self.sub_batch_size != 0:
             tqdm.write('Warning: sub_batch_size do not divide train_batch size.' \
             'So the total batch size with grad accumulation could be smaller than you think.')
 
