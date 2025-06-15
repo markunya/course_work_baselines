@@ -80,8 +80,8 @@ class RandomImpulseResponse:
                 self.resampler_cache[sr_ir] = Resample(sr_ir, target_sr, resampling_method="sinc_interp_kaiser")
             ir_waveform = self.resampler_cache[sr_ir](ir_waveform)
 
-        l2 = torch.linalg.vector_norm(ir_waveform, ord=2)
-        ir_waveform = ir_waveform / (l2 + 1e-8)
+        ir_waveform = ir_waveform[...,int(ir_waveform.abs().argmax().item()):]
+        ir_waveform /= (ir_waveform[...,0].item() + 1e-8)
 
         return ir_waveform
 
@@ -95,8 +95,9 @@ class RandomImpulseResponse:
             wav = wav.unsqueeze(0)
 
         processed_wav = F.fftconvolve(wav, ir_waveform, mode='full')
+        processed_wav = processed_wav[...,:wav.shape[-1]]
         
-        return processed_wav.squeeze(0)[:wav.shape[-1]]
+        return processed_wav.squeeze(0)
 
 @augmentations_registry.add_to_registry(name='acrusher')
 class RandomAcrusher:
