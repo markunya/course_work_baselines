@@ -1,2 +1,6 @@
-IR_MelodiumRM6.wav
-IR_GaumontKalee.wav
+Altec_670B.wav
+EV_RE20_HPF.wav
+IR_Lomo52A5M.wav
+IR_RCAKU3a.wav
+Sony_C37Fet.wav
+oshiba_TypeK_HPF.wav

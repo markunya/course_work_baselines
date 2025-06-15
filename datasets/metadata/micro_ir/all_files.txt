@@ -1,5 +1,6 @@
 Altec_639.wav
 Altec_670A.wav
+Altec_670B.wav
 American_R331.wav
 Amperite_RA.wav
 B%26O_BM2.wav
@@ -12,6 +13,7 @@ Coles_4038.wav
 Doremi_.wav
 EMI_ribbon.wav
 EV_RE20_Flat.wav
+EV_RE20_HPF.wav
 FilmIndustries_M8.wav
 GEC_2373.wav
 GEC_bigdynamic.wav
@@ -22,12 +24,14 @@ IR_Astatic77.wav
 IR_BeyerM500Stock.wav
 IR_FosterDynamicDF1.wav
 IR_GaumontKalee.wav
+IR_Lomo52A5M.wav
 IR_Meazzi.wav
 IR_MelodiumRM6.wav
 IR_OktavaMD57.wav
 IR_OktavaMK18_Overload.wav
 IR_OktavaMK18Silver.wav
 IR_OktavaML16.wav
+IR_RCAKU3a.wav
 IR_ResloCR600.wav
 IR_ResloDynamic.wav
 IR_ResloURA.wav
@@ -39,6 +43,7 @@ IR_STC4035.wav
 Melodium_42B_1.wav
 Melodium_Model12.wav
 Oktava_ML19.wav
+oshiba_TypeK_HPF.wav
 RCA_44BX_1.wav
 RCA_44BX_2.wav
 RCA_74B.wav
@@ -54,6 +59,7 @@ Reslo_SR1.wav
 Reslo_VMC2.wav
 Shure315_flat.wav
 Shure315_HPF.wav
+Sony_C37Fet.wav
 Telefunken_M201.wav
 Toshiba_BK5.wav
 Toshiba_TypeG.wav
