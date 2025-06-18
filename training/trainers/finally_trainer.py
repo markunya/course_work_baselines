@@ -23,14 +23,35 @@ class FinallyBaseTrainer(BaseTrainer):
         requires_grad(self.wavlm, False)
 
     @torch.no_grad()
-    def apply_wavlm(self, wav):
+    def apply_wavlm(self, batch):
+        wav = batch['input_wav'].to(self.device).unsqueeze(1)
+
+        if 'raw_input_wav' in batch:
+            raw_wav = batch['raw_input_wav'].to(self.device).unsqueeze(1)
+        else:
+            raw_wav = wav.clone()
+
         if len(wav.shape) == 3:
             wav = wav.squeeze(1)
+        if len(raw_wav.shape) == 3:
+            raw_wav = raw_wav.squeeze(1)
 
-        outputs = self.wavlm(input_values=wav, output_hidden_states=True)
-        features = outputs.last_hidden_state
+        outputs = self.wavlm(input_values=raw_wav, output_hidden_states=True)
+        raw_features = outputs.last_hidden_state.permute(0, 2, 1)
 
-        return features
+        if 'raw_input_wav' not in batch:
+            return raw_features
+        
+        downsample_coef = raw_features.shape[-1] / raw_wav.shape[-1]
+        features_list = []
+        raw_segment_size = wav.shape[-1]
+        segment_size = int(raw_segment_size * downsample_coef)
+
+        for raw_feature, raw_start in zip(raw_features, batch['segment_start']):
+            start = int(raw_start * downsample_coef)
+            features_list.append(raw_feature[:,start:start+segment_size])    
+
+        return torch.stack(features_list)
 
     def synthesize_wavs(self, batch):
         gen = self.models[self.gen_name]
@@ -44,7 +65,7 @@ class FinallyBaseTrainer(BaseTrainer):
         with torch.no_grad():
             for name, input_wav in zip(batch['name'], batch['input_wav']):
                 input_wav = input_wav.to(self.device)[None,None]
-                wavlm_features = self.apply_wavlm(input_wav)
+                wavlm_features = self.apply_wavlm(batch)
                 gen_wav = gen(input_wav, wavlm_features).squeeze()
                 
                 result_dict['gen_wav'].append(gen_wav)
@@ -67,7 +88,7 @@ class FinallyPretrainer(FinallyBaseTrainer):
         real_wav = batch['wav'].to(self.device).unsqueeze(1)
         input_wav = batch['input_wav'].to(self.device).unsqueeze(1)
 
-        wavlm_features = self.apply_wavlm(input_wav)
+        wavlm_features = self.apply_wavlm(batch)
         gen_wav = gen(input_wav, wavlm_features)
         gen_optimizer.zero_grad()
 
@@ -135,7 +156,7 @@ class FinalllyTrainer(FinallyBaseTrainer):
 
         accum_steps = self.batch_size // self.sub_batch_size
         
-        wavlm_features = self.apply_wavlm(input_wav)
+        wavlm_features = self.apply_wavlm(batch)
         gen_wav = gen(input_wav, wavlm_features)
 
         requires_grad(disc, True)

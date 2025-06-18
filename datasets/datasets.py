@@ -291,6 +291,7 @@ class AugmentedDataset(Dataset):
 
     def _apply_augs(self, wav, index):
         result = wav.clone()
+        orig_len = result.shape[-1]
         seed = self.seed + index if self.eval else None
 
         for aug in self.augmentations:
@@ -299,7 +300,7 @@ class AugmentedDataset(Dataset):
             except Exception as e:
                 tqdm.write(f"Failed to apply {aug.__class__.__name__}: {e}")
         
-        return result
+        return result[:,:orig_len]
 
     def __len__(self):
         return len(self.files_list)
@@ -314,7 +315,8 @@ class AugmentedLibriTTSR(AugmentedDataset):
         seed=42,
         eval=False,
         split=True,
-        silence_ratio=0.2,
+        max_row_len=65536,
+        silence_ratio=0.0,
         augs_conf=tuple()
     ):
         super().__init__(
@@ -327,6 +329,7 @@ class AugmentedLibriTTSR(AugmentedDataset):
             augs_conf=augs_conf,
             silence_ratio=silence_ratio
         )
+        self.max_row_len=max_row_len
 
     
     def __getitem__(self, index):
@@ -344,11 +347,29 @@ class AugmentedLibriTTSR(AugmentedDataset):
             wav = self.resamplers[sr](wav)
 
         wav = self._add_silence(wav)
-        augmented = self._apply_augs(wav, index).numpy().squeeze(0)
+        wav = torch.nn.functional.pad(
+            wav,
+            (0, max(0, self.max_row_len - wav.shape[-1]))
+        )
+        (wav,) = split_audios(
+            [wav.numpy().squeeze(0)],
+            self.max_row_len,
+            split=self.split
+        )
+        raw_augmented = self._apply_augs(
+            torch.from_numpy(wav).unsqueeze(0),
+            index
+        ).numpy().squeeze(0)
 
-        (wav, augmented) = split_audios([wav.numpy().squeeze(0), augmented], self.segment_size, self.split)
-        wav, augmented = torch.from_numpy(wav[None]), torch.from_numpy(augmented[None])
+        audios, start_idx, _ = split_audios(
+            [wav, raw_augmented],
+            self.segment_size,
+            self.split,
+            ret_bounds=True
+        )
+        wav, augmented = torch.from_numpy(audios[0][None]), torch.from_numpy(audios[1][None])
 
+        raw_input_wav = torch.nan_to_num(torch.from_numpy(raw_augmented))
         input_wav = torch.nan_to_num(augmented)
         target_wav = torch.nan_to_num(wav)
 
@@ -360,10 +381,13 @@ class AugmentedLibriTTSR(AugmentedDataset):
 
         assert input_wav.shape == target_wav.shape
 
+        raw_input_wav = torch.clamp(raw_input_wav, min=-1, max=1)
         input_wav = torch.clamp(input_wav, min=-1, max=1)
         target_wav = torch.clamp(target_wav, min=-1, max=1)
 
         return {
+            'raw_input_wav': raw_input_wav,
+            'segment_start': torch.tensor(start_idx, dtype=torch.int),
             'input_wav': input_wav,
             'wav': target_wav,
             'name': filename
@@ -498,6 +522,8 @@ class FinallyDataset(Dataset):
         pad_size = (base - remainder) if remainder != 0 else 0
         input_wav = torch.nn.functional.pad(wav, (0, pad_size))
 
+        input_wav = torch.clamp(input_wav, min=-1, max=1)
+        
         return {
             'input_wav': input_wav.squeeze(),
             'name': filename

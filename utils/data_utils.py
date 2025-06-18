@@ -50,7 +50,9 @@ def save_wavs_to_dir(wav_batch, name_batch, path, sample_rate):
             name += '.wav'
         file_path = os.path.join(path, name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        torchaudio.save(file_path, wav.unsqueeze(0).cpu(), sample_rate)
+        if len(wav.shape) < 2:
+            wav = wav.unsqueeze(0)
+        torchaudio.save(file_path, wav.cpu(), sample_rate)
 
 def load_wav(full_path):
     sampling_rate, data = read(full_path)
@@ -113,8 +115,10 @@ def read_file_list(file_path):
         file_list = [line.strip() for line in f.readlines() if line.strip()]
     return file_list
 
-def split_audios(audios, segment_size, split):
+def split_audios(audios, segment_size, split, ret_bounds=False):
     audios = [torch.FloatTensor(torch.from_numpy(audio)).unsqueeze(0) for audio in audios]
+    audio_start = 0
+
     if split:
         if audios[0].size(1) >= segment_size:
             max_audio_start = audios[0].size(1) - segment_size
@@ -132,7 +136,13 @@ def split_audios(audios, segment_size, split):
                 )
                 for audio in audios
             ]
+    
     audios = [audio.squeeze(0).numpy() for audio in audios]
+
+    if ret_bounds:
+        audio_end = audios[0].size if not split else audio_start + segment_size
+        return audios, audio_start, audio_end
+    
     return audios
 
 def low_pass_filter(audio: np.ndarray, max_freq,

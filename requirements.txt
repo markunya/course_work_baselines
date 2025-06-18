@@ -12,6 +12,7 @@ asttokens==3.0.0
 async-lru==2.0.4
 attrs==25.1.0
 audioread==3.0.1
+autoclip==0.2.1
 babel==2.17.0
 beautifulsoup4==4.12.3
 bitarray==3.3.1

@@ -188,7 +188,7 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         spectralunet_out_channels=512, # good
 
         use_waveunet=True, # good
-        waveunet_block_widths=(64, 128, 256, 512), # omg was (10, 20, 40, 80), 
+        waveunet_block_widths=(128, 128, 256, 512), # omg was (10, 20, 40, 80), 
         waveunet_block_depth=4, # good
 
         use_spectralmasknet=True, # good
@@ -203,6 +203,9 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
 
         norm_type: Literal["weight", "spectral"] = "weight",
         use_skip_connect=True,
+
+        use_conv_post=False,
+        use_tanh=False,
 
         waveunet_input: Literal["waveform", "hifi", "both"] = "both",
     ):
@@ -236,6 +239,9 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
 
             waveunet_input=waveunet_input
         )
+        self.use_conv_post = use_conv_post
+        self.use_tanh = use_tanh
+
         self.resblock_type = ResBlock1 if hifi_resblock == '1' else ResBlock2
         self.pre_upsampler_proccessing = nn.Sequential(
             self.resblock_type(spectralunet_out_channels + 1024),
@@ -274,7 +280,6 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         x = self.apply_spectralunet(x)
         assert x.shape[1] == 512
 
-        wavlm_features = wavlm_features.permute(0, 2, 1)
         assert wavlm_features.shape[1] == 1024
 
         wavlm_features_interpolated = torch.nn.functional.interpolate(
@@ -297,7 +302,10 @@ class FinallyGenerator(A2AHiFiPlusGeneratorV2):
         if self.use_upsamplewaveunet:
             x = self.upsamplewaveunet(x)
         else:
-            x = self.conv_post(x)
+            if self.use_conv_post:
+                x = self.conv_post(x)
+
+        if self.use_tanh:     
+            x = torch.tanh(x)
             
-        x = torch.tanh(x)
         return x
